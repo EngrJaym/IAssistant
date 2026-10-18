@@ -17,6 +17,7 @@ from .session_ws import Session
 
 NO_OPENAI = "OPENAI_API_KEY is not configured."
 NO_GROQ = "GROQ_API_KEY is not configured."
+RESUME_MAX_BYTES = 10 * 1024 * 1024
 
 
 def _resolved(
@@ -25,10 +26,14 @@ def _resolved(
     stack: str | None = None,
     groq_available: set[str] | None = None,
 ):
+    explicit = llm is not None or stt is not None or bool((stack or "").strip())
+    effective_stack = (stack or "").strip().lower() or None
+    if not effective_stack and not explicit:
+        effective_stack = config.PROVIDER_STACK or None
     return resolve(
         llm=llm or config.LLM_PROVIDER,
         stt=stt or config.STT_PROVIDER,
-        stack=stack or config.PROVIDER_STACK or None,
+        stack=effective_stack,
         openai_answer=config.ANSWER_MODEL,
         openai_stt=config.STT_MODEL,
         groq_answer=config.GROQ_ANSWER_MODEL,
@@ -97,8 +102,6 @@ app.add_middleware(
 @app.get("/api/health")
 def health():
     default = _resolved()
-    if config.PROVIDER_STACK:
-        default = _resolved(stack=config.PROVIDER_STACK)
     return {
         "ok": True,
         "database": db.ping(),
@@ -216,7 +219,10 @@ async def session_start(request: Request, req: StartReq = StartReq()):
             {"error": "Sign in required.", "hint": "Use Sign in to save meetings and sync your setup to your account."},
             status_code=401,
         )
-    r, err = await _resolve_for_session(req.llm, req.stt, req.stack or config.PROVIDER_STACK or None)
+    stack_arg = req.stack
+    if not stack_arg and req.llm is None and req.stt is None:
+        stack_arg = config.PROVIDER_STACK or None
+    r, err = await _resolve_for_session(req.llm, req.stt, stack_arg)
     if err:
         return JSONResponse({"error": err, "hint": "Use a free-tier Groq model (e.g. openai/gpt-oss-20b) or clear GROQ_ANSWER_MODEL in .env."}, status_code=400)
     assert r is not None
@@ -310,15 +316,30 @@ def meetings_export_docx(meeting_id: str, request: Request):
 
 @app.post("/api/parse-resume")
 async def parse_resume(file: UploadFile):
-    data, name = await file.read(), (file.filename or "").lower()
-    if name.endswith(".pdf"):
-        from pypdf import PdfReader
-        text = "\n".join(p.extract_text() or "" for p in PdfReader(io.BytesIO(data)).pages)
-    elif name.endswith(".docx"):
-        import docx
-        text = "\n".join(p.text for p in docx.Document(io.BytesIO(data)).paragraphs)
-    else:
-        text = data.decode("utf-8", "ignore")
+    name = (file.filename or "").lower()
+    if not (name.endswith(".pdf") or name.endswith(".docx")):
+        return JSONResponse(
+            {"error": "Only PDF or Word (.docx) files are supported."},
+            status_code=400,
+        )
+    data = await file.read()
+    if len(data) > RESUME_MAX_BYTES:
+        return JSONResponse(
+            {"error": "File is too large. Maximum size is 10 MB."},
+            status_code=400,
+        )
+    try:
+        if name.endswith(".pdf"):
+            from pypdf import PdfReader
+            text = "\n".join(p.extract_text() or "" for p in PdfReader(io.BytesIO(data)).pages)
+        else:
+            import docx
+            text = "\n".join(p.text for p in docx.Document(io.BytesIO(data)).paragraphs)
+    except Exception:
+        return JSONResponse({"error": "Could not read this file. Try another PDF or .docx."}, status_code=400)
+    text = (text or "").strip()
+    if not text:
+        return JSONResponse({"error": "No text found in this file."}, status_code=400)
     return {"text": text[:20000]}
 
 

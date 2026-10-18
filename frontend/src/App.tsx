@@ -3,18 +3,15 @@ import { apiFetch, fetchAuthMe, logout, saveProfile, type AuthState } from "./se
 import { Coach, Ev, startAudioCapture, startBrowserSTT, type AudioSource } from "./services/websocket";
 import {
   AnswerPanel,
-  AudioSourcePicker,
   CandidateProfile,
   Controls,
   DialogueEntry,
   Header,
   LiveTranscript,
   MeetingNotes,
-  ProviderPicker,
   QuestionPanel,
   SavedMeeting,
   SpeakerPicker,
-  StackInfo,
   StatusIndicator,
   TabNav,
   formatTime,
@@ -34,6 +31,7 @@ const init = {
   metrics: null as any,
   error: "",
   detected: false,
+  phaseReason: "",
 };
 type S = typeof init;
 
@@ -41,6 +39,8 @@ function reduce(s: S, e: Ev): S {
   switch (e.type) {
     case "status":
       return { ...s, status: e.status, error: e.status === "ERROR" ? s.error : "" };
+    case "phase":
+      return { ...s, status: e.status, phaseReason: e.reason || "" };
     case "transcript_partial":
       return { ...s, partial: e.text };
     case "transcript_final":
@@ -137,11 +137,8 @@ export default function App() {
   const [mode, setMode] = useState("balanced");
   const [dev, setDev] = useState(false);
   const [tab, setTab] = useState<"session" | "notes" | "setup">("session");
-  const [stack, setStack] = useState(store.get("coach.stack") || "free");
-  const [llm, setLlm] = useState("ollama");
-  const [stt, setStt] = useState("browser");
-  const [stacks, setStacks] = useState<Record<string, StackInfo>>({});
-  const [configured, setConfigured] = useState<{ openai?: boolean; groq?: boolean }>({});
+  const [llm, setLlm] = useState("groq");
+  const [stt, setStt] = useState("groq");
   const [dbEnabled, setDbEnabled] = useState(false);
   const [speaker, setSpeaker] = useState(store.get("coach.speaker") || "Interviewer");
   const [audioSource, setAudioSource] = useState<AudioSource>((store.get("coach.audio") as AudioSource) || "mic");
@@ -168,17 +165,8 @@ export default function App() {
   });
   const profileSyncRef = useRef<ReturnType<typeof setTimeout>>();
 
-  const applyStack = useCallback((id: string, catalog: Record<string, StackInfo>) => {
-    const s = catalog[id];
-    if (!s) return;
-    setLlm(s.llm);
-    setStt(s.stt);
-    store.set("coach.llm", s.llm);
-    store.set("coach.stt", s.stt);
-  }, []);
-
-  const live = useRef({ profile, mode, muted, llm, stt, stack, speaker, meetingId, handsFree });
-  live.current = { profile, mode, muted, llm, stt, stack, speaker, meetingId, handsFree };
+  const live = useRef({ profile, mode, muted, llm, stt, speaker, meetingId, handsFree });
+  live.current = { profile, mode, muted, llm, stt, speaker, meetingId, handsFree };
   const coach = useRef<Coach>();
   const stopMic = useRef<() => void>();
   const dialogueRef = useRef(dialogue);
@@ -260,14 +248,8 @@ export default function App() {
     apiFetch("/api/health")
       .then((r) => r.json())
       .then((h) => {
-        setStacks(h.stacks || {});
-        setConfigured(h.configured || {});
         setDbEnabled(!!h.database);
-        const saved = store.get("coach.stack");
-        const initial = saved || h.defaults?.stack || "free";
-        setStack(initial);
-        if (h.stacks?.[initial]) applyStack(initial, h.stacks);
-        else if (h.defaults) {
+        if (h.defaults) {
           setLlm(h.defaults.llm);
           setStt(h.defaults.stt);
         }
@@ -279,25 +261,11 @@ export default function App() {
       dispatch({ type: "error", message: "Sign-in failed. Check OAuth redirect URLs and try again." });
       window.history.replaceState({}, "", window.location.pathname);
     }
-  }, [applyStack, loadAuth]);
+  }, [loadAuth]);
 
   useEffect(() => {
     if (tab === "notes" && dbEnabled) refreshSavedMeetings();
   }, [tab, dbEnabled, refreshSavedMeetings]);
-
-  const pickStack = (id: string) => {
-    setStack(id);
-    store.set("coach.stack", id);
-    if (id !== "custom" && stacks[id]) applyStack(id, stacks);
-  };
-  const pickLlm = (v: string) => {
-    setLlm(v);
-    store.set("coach.llm", v);
-  };
-  const pickStt = (v: string) => {
-    setStt(v);
-    store.set("coach.stt", v);
-  };
 
   useEffect(() => {
     if (!running) return;
@@ -307,9 +275,6 @@ export default function App() {
           type: "config",
           profile,
           mode,
-          stack: stack === "custom" ? "custom" : stack,
-          llm,
-          stt,
           speaker,
           meeting_id: meetingId,
           hands_free: handsFree,
@@ -317,7 +282,7 @@ export default function App() {
       600,
     );
     return () => clearTimeout(t);
-  }, [profile, mode, running, stack, llm, stt, speaker, meetingId, handsFree]);
+  }, [profile, mode, running, speaker, meetingId, handsFree]);
 
   const onEvent = useCallback(
     (e: Ev) => {
@@ -341,7 +306,7 @@ export default function App() {
       const r = await apiFetch("/api/session/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ stack: stack === "custom" ? "custom" : stack, llm, stt }),
+        body: JSON.stringify({}),
       });
       if (!r.ok) {
         const j = await r.json().catch(() => ({}));
@@ -350,12 +315,11 @@ export default function App() {
       const j = await r.json();
       const mid = j.meeting_id as string | null;
       setMeetingId(mid);
+      if (j.llm) setLlm(j.llm);
+      if (j.stt) setStt(j.stt);
       coach.current = new Coach(onEvent, () => ({
         profile: live.current.profile,
         mode: live.current.mode,
-        stack: live.current.stack === "custom" ? "custom" : live.current.stack,
-        llm: live.current.llm,
-        stt: live.current.stt,
         speaker: live.current.speaker,
         meeting_id: live.current.meetingId,
         hands_free: live.current.handsFree,
@@ -459,14 +423,7 @@ export default function App() {
   }, []);
 
   const status = running && muted ? "READY" : s.status;
-  const chip =
-    s.status === "GENERATING"
-      ? "Generating answer…"
-      : s.status === "ANSWER READY"
-        ? "Answer ready"
-        : s.detected && s.question && !s.answer
-          ? "Question detected"
-          : "";
+  const startDisabled = auth.required && !auth.user;
 
   const handleLogout = async () => {
     await logout();
@@ -485,31 +442,20 @@ export default function App() {
           onLogout: handleLogout,
         }}
       />
-      {auth.required && !auth.user && (
-        <div className="alert-error" style={{ marginBottom: 12 }}>
-          Sign in to start sessions and save meetings to your account.
-        </div>
-      )}
-      <TabNav tab={tab} setTab={setTab} noteCount={dialogue.length} />
+      {auth.required && !auth.user && <p className="banner-signin">Sign in to start.</p>}
+      <TabNav tab={tab} setTab={setTab} />
 
       {tab === "session" && (
-        <>
-          <div className="top-bar">
-            <StatusIndicator
-              status={status}
-              hint={
-                running && muted
-                  ? "microphone muted"
-                  : speakerHint || (handsFree ? "Hands-free · interviewer questions only" : undefined)
-              }
-            />
+        <div className="session-layout">
+          <div className="session-toolbar">
+            <StatusIndicator status={status} hint={running && muted ? "Muted" : undefined} />
             <SpeakerPicker speaker={speaker} setSpeaker={setSpeaker} disabled={running && handsFree} />
           </div>
           {s.error && <div className="alert-error">{s.error}</div>}
+          <AnswerPanel answer={s.answer} points={s.points} followUp={s.followUp} metrics={s.metrics} dev={dev} />
+          <QuestionPanel question={s.question} possible={s.possible} />
           <LiveTranscript partial={s.partial} finals={s.finals} />
-          <QuestionPanel question={s.question} qtype={s.qtype} chip={chip} possible={s.possible} />
-          <AnswerPanel answer={s.answer} points={s.points} followUp={s.followUp} confidence={s.confidence} metrics={s.metrics} dev={dev} />
-        </>
+        </div>
       )}
 
       {tab === "notes" && (
@@ -532,22 +478,23 @@ export default function App() {
 
       {tab === "setup" && (
         <>
-          <AudioSourcePicker source={audioSource} setSource={setAudioSource} disabled={running} />
-          <label className="check-inline" style={{ display: "block", margin: "8px 0 12px" }}>
-            <input type="checkbox" checked={handsFree} disabled={running} onChange={(e) => setHandsFree(e.target.checked)} />
-            Hands-free (only answer when active speaker is Interviewer)
-          </label>
-          <ProviderPicker
-            stack={stack}
-            setStack={pickStack}
-            llm={llm}
-            stt={stt}
-            setLlm={pickLlm}
-            setStt={pickStt}
-            stacks={stacks}
-            configured={configured}
-            disabled={running}
-          />
+          <div className="card setup-quick">
+            <label className="field">
+              Audio
+              <select disabled={running} value={audioSource} onChange={(e) => setAudioSource(e.target.value as AudioSource)}>
+                <option value="mic">Microphone</option>
+                <option value="display">Meeting / tab audio</option>
+              </select>
+            </label>
+            <label className="check-inline">
+              <input type="checkbox" checked={handsFree} disabled={running} onChange={(e) => setHandsFree(e.target.checked)} />
+              Hands-free (interviewer only)
+            </label>
+            <label className="check-inline">
+              <input type="checkbox" checked={dev} onChange={(e) => setDev(e.target.checked)} />
+              Show timing metrics
+            </label>
+          </div>
           <CandidateProfile profile={profile} setProfile={setProfile} />
         </>
       )}
@@ -556,14 +503,12 @@ export default function App() {
         running={running}
         muted={muted}
         mode={mode}
-        dev={dev}
         startDisabled={auth.required && !auth.user}
         onStart={start}
         onStop={stop}
         onMute={toggleMute}
         onClear={clearSession}
         setMode={setMode}
-        setDev={setDev}
       />
     </div>
   );

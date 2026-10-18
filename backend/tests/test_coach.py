@@ -66,7 +66,9 @@ def run_pipeline(texts, monkeypatch, wait=0.6):
 def test_pipeline_answers_question_only_once(monkeypatch):
     types, ev = run_pipeline(["What is Docker?"], monkeypatch)
     assert types.count("answer_start") == 1 and "".join(e["text"] for e in ev if e["type"] == "answer_token") == "Docker is a container runtime."
-    assert "answer_complete" in types and any(e.get("status") == "ANSWER READY" for e in ev if e["type"] == "status")
+    assert "answer_complete" in types and any(
+        e.get("status") in ("ANSWER READY", "SUGGESTION READY") for e in ev if e["type"] == "status"
+    )
     assert [e for e in ev if e["type"] == "answer_complete"][0]["metrics"]["total_ms"] >= 0
 
 

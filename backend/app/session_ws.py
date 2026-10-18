@@ -11,6 +11,7 @@ from websockets.asyncio.client import connect
 from . import config, db
 from .agent import Context, classify, client, stream_answer
 from .detector import QUESTION_TYPES, local_classify, similar
+from .decision_engine import evaluate_turn
 from .session_flow import Phase, UtteranceBuffer, ui_status
 from .speaker_gate import should_run_question_pipeline, speaker_status_label
 from .stt_groq_chunked import GroqChunkTranscriber
@@ -54,6 +55,7 @@ class Session:
         self.answer_gen = 0
         self.last_dup_text, self.last_dup_ts = "", 0.0
         self.utterance = UtteranceBuffer(self._utterance_flush, self._utterance_waiting)
+        self.active_qid = 0
         self.closed = False
 
     async def send(self, type_: str, **kw):
@@ -64,9 +66,11 @@ class Session:
         except Exception:
             pass
 
-    async def set_phase(self, phase: Phase, legacy: str | None = None):
+    async def set_phase(self, phase: Phase, legacy: str | None = None, reason: str | None = None):
         self.phase = phase
-        await self.send("status", status=ui_status(phase, legacy))
+        status = ui_status(phase, legacy)
+        await self.send("status", status=status)
+        await self.send("phase", phase=phase.value, status=status, reason=reason or "")
         await self.send(
             "speaker_status",
             label=speaker_status_label(self.speaker, self.hands_free),
@@ -100,7 +104,19 @@ class Session:
     def on_final(self, text: str):
         self.ctx.recent.append(text)
         loop = asyncio.get_running_loop()
+        if self.phase in (Phase.ANSWERING, Phase.COOLDOWN):
+            loop.create_task(self._interrupt_for_new_speech())
         self.utterance.ingest(text, loop)
+
+    async def _interrupt_for_new_speech(self):
+        if self.gen and not self.gen.done():
+            self.gen.cancel()
+        self.gen_seq += 1
+        self.answer_gen = self.gen_seq
+        await self.set_phase(Phase.REASSESSING, reason="New speech while answering")
+        await asyncio.sleep(0.05)
+        if self.phase == Phase.REASSESSING:
+            await self.set_phase(Phase.LISTENING)
 
     async def _emit_final(self, text: str, ts: int):
         now = time.monotonic()
@@ -211,13 +227,16 @@ class Session:
                 pass
 
     async def process(self, text: str, label: str, conf: float):
-        allowed, reason = should_run_question_pipeline(self.speaker, self.hands_free)
+        allowed, skip_reason = should_run_question_pipeline(self.speaker, self.hands_free)
         if not allowed:
-            await self.send("transcript_skipped", reason=reason, text=text[:240])
+            await self.send("transcript_skipped", reason=skip_reason, text=text[:240])
+            dec = evaluate_turn(text, self.speaker, self.hands_free, "IRRELEVANT", 0.0, True, self.mode)
+            await self.send("decision", **dec.to_dict())
+            await self.set_phase(Phase.SUPPRESSED, reason=skip_reason)
             await self.set_phase(Phase.LISTENING)
             return
         t0 = time.monotonic()
-        await self.set_phase(Phase.VALIDATING)
+        await self.set_phase(Phase.VALIDATING, reason="Evaluating utterance")
         try:
             if label == "AMBIGUOUS":
                 if len(text.split()) < 4:
@@ -233,30 +252,33 @@ class Session:
             await self.fail(ex)
             await self.set_phase(Phase.LISTENING)
             return
-        if label not in QUESTION_TYPES:
+
+        dec = evaluate_turn(text, self.speaker, self.hands_free, label, conf, True, self.mode)
+        await self.send("decision", **dec.to_dict())
+
+        if not dec.should_answer:
+            if dec.tier == "medium" and label in QUESTION_TYPES:
+                await self.send("possible_question", question=text, confidence=dec.confidence)
+            await self.set_phase(Phase.SUPPRESSED, reason=dec.reason)
             await self.set_phase(Phase.LISTENING)
             return
-        th = {"normal": max(config.THRESHOLD, 0.9), "balanced": config.THRESHOLD, "aggressive": 0.5}.get(
-            self.mode, config.THRESHOLD
-        )
-        if conf < th:
-            if conf >= 0.5:
-                await self.send("possible_question", question=text, confidence=conf)
-            await self.set_phase(Phase.LISTENING)
-            return
+
         busy = self.gen and not self.gen.done()
         if self.last_q and self.last_ans and similar(text, self.last_q) > 0.85:
             if busy:
                 return
-            await self.send("question_detected", question=text, qtype=label, confidence=conf)
+            self.active_qid += 1
+            await self.send("question_detected", question=text, qtype=label, confidence=dec.confidence, qid=self.active_qid)
             await self._replay_cached(text)
             return
         if busy:
             self.gen.cancel()
         self.gen_seq += 1
         gid = self.gen_seq
-        await self.send("question_detected", question=text, qtype=label, confidence=conf)
-        self.gen = asyncio.create_task(self.answer(text, label, t0, gid))
+        self.active_qid += 1
+        qid = self.active_qid
+        await self.send("question_detected", question=text, qtype=label, confidence=dec.confidence, qid=qid)
+        self.gen = asyncio.create_task(self.answer(text, label, t0, gid, qid))
 
     async def _replay_cached(self, q: str):
         await self.send("answer_start", question=q)
@@ -267,7 +289,7 @@ class Session:
         await asyncio.sleep(config.ANSWER_COOLDOWN_SEC)
         await self.set_phase(Phase.LISTENING)
 
-    async def answer(self, q: str, qtype: str, t0: float, gid: int):
+    async def answer(self, q: str, qtype: str, t0: float, gid: int, qid: int = 0):
         self.answer_gen = gid
         t_det = time.monotonic()
         await self.send("answer_start", question=q)
@@ -299,8 +321,8 @@ class Session:
         }
         self.last_q, self.last_ans = q, done
         self.ctx.add_turn(q, done["answer"])
-        await self.send("answer_complete", **done, metrics=m)
-        await self.set_phase(Phase.COOLDOWN)
+        await self.send("answer_complete", **done, metrics=m, qid=qid)
+        await self.set_phase(Phase.COOLDOWN, reason="Suggestion ready")
         await asyncio.sleep(config.ANSWER_COOLDOWN_SEC)
         await self.set_phase(Phase.LISTENING)
 

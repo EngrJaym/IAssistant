@@ -11,9 +11,11 @@ class Phase(str, Enum):
     IDLE = "IDLE"
     LISTENING = "LISTENING"
     WAITING_FOR_COMPLETION = "WAITING_FOR_COMPLETION"
-    VALIDATING = "VALIDATING"
+    VALIDATING = "ANALYZING"
     ANSWERING = "ANSWERING"
     COOLDOWN = "COOLDOWN"
+    SUPPRESSED = "SUPPRESSED"
+    REASSESSING = "REASSESSING"
 
 
 def ui_status(phase: Phase, legacy: str | None = None) -> str:
@@ -23,10 +25,12 @@ def ui_status(phase: Phase, legacy: str | None = None) -> str:
     return {
         Phase.IDLE: "READY",
         Phase.LISTENING: "LISTENING",
-        Phase.WAITING_FOR_COMPLETION: "WAITING FOR COMPLETION",
-        Phase.VALIDATING: "ANALYZING QUESTION",
-        Phase.ANSWERING: "GENERATING",
-        Phase.COOLDOWN: "ANSWER READY",
+        Phase.WAITING_FOR_COMPLETION: "WAITING FOR TURN END",
+        Phase.VALIDATING: "ANALYZING",
+        Phase.ANSWERING: "SUGGESTING",
+        Phase.COOLDOWN: "SUGGESTION READY",
+        Phase.SUPPRESSED: "LISTENING",
+        Phase.REASSESSING: "REASSESSING",
     }.get(phase, "LISTENING")
 
 
