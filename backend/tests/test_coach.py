@@ -72,6 +72,33 @@ def test_pipeline_answers_question_only_once(monkeypatch):
     assert [e for e in ev if e["type"] == "answer_complete"][0]["metrics"]["total_ms"] >= 0
 
 
+def test_pipeline_answers_each_interviewer_question(monkeypatch):
+    types, ev = run_pipeline(
+        ["What is Docker?", "How would you scale that service?"],
+        monkeypatch,
+        wait=1.2,
+    )
+    questions = [e["question"] for e in ev if e["type"] == "question_detected"]
+    assert types.count("answer_start") == 2
+    assert questions[0].startswith("What is Docker")
+    assert "scale" in questions[1].lower()
+
+
+def test_pipeline_ignores_answer_and_personal_question(monkeypatch):
+    types, ev = run_pipeline(
+        [
+            "What is Docker?",
+            "I would package the application in an image and run it on Kubernetes.",
+            "How old are you?",
+            "Are you married?",
+        ],
+        monkeypatch,
+        wait=1.2,
+    )
+    assert types.count("answer_start") == 1
+    assert [e["question"] for e in ev if e["type"] == "question_detected"] == ["What is Docker?"]
+
+
 def test_pipeline_ignores_filler(monkeypatch):
     types, _ = run_pipeline(["Hi, how are you today?", "That's interesting.", "Okay, let's continue."], monkeypatch)
     assert "answer_start" not in types and "question_detected" not in types

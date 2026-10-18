@@ -13,7 +13,8 @@ from .agent import Context, classify, client, stream_answer
 from .detector import QUESTION_TYPES, local_classify, similar
 from .decision_engine import evaluate_turn
 from .session_flow import Phase, UtteranceBuffer, ui_status
-from .speaker_gate import should_run_question_pipeline, speaker_status_label
+from .speaker_gate import speaker_status_label
+from .turn_router import is_personal_question, route_turn
 from .stt_groq_chunked import GroqChunkTranscriber
 from .transcript_merge import dedupe_final
 
@@ -49,7 +50,7 @@ class Session:
         self.last_q, self.last_ans, self.t_stop, self.stt_ms = "", None, None, None
         self.meeting_id: str | None = None
         self.speaker = "Interviewer"
-        self.hands_free = config.HANDS_FREE
+        self.hands_free = True
         self.phase = Phase.IDLE
         self.gen_seq = 0
         self.answer_gen = 0
@@ -73,8 +74,8 @@ class Session:
         await self.send("phase", phase=phase.value, status=status, reason=reason or "")
         await self.send(
             "speaker_status",
-            label=speaker_status_label(self.speaker, self.hands_free),
-            hands_free=self.hands_free,
+            label=speaker_status_label(),
+            hands_free=True,
             role=self.speaker,
         )
 
@@ -103,29 +104,24 @@ class Session:
 
     def on_final(self, text: str):
         self.ctx.recent.append(text)
-        loop = asyncio.get_running_loop()
-        if self.phase in (Phase.ANSWERING, Phase.COOLDOWN):
-            loop.create_task(self._interrupt_for_new_speech())
-        self.utterance.ingest(text, loop)
-
-    async def _interrupt_for_new_speech(self):
-        if self.gen and not self.gen.done():
-            self.gen.cancel()
-        self.gen_seq += 1
-        self.answer_gen = self.gen_seq
-        await self.set_phase(Phase.REASSESSING, reason="New speech while answering")
-        await asyncio.sleep(0.05)
-        if self.phase == Phase.REASSESSING:
-            await self.set_phase(Phase.LISTENING)
+        self.utterance.ingest(text, asyncio.get_running_loop())
 
     async def _emit_final(self, text: str, ts: int):
         now = time.monotonic()
         if dedupe_final(text, self.last_dup_text, last_ts=self.last_dup_ts, now=now):
             return
         self.last_dup_text, self.last_dup_ts = text, now
-        await self.send("transcript_final", text=text, ts=ts)
+        label, _conf = local_classify(text)
+        route = route_turn(text, label, last_question=self.last_q, last_answer=self._last_answer_text())
+        self.speaker = route.speaker
+        await self.send("transcript_final", text=text, ts=ts, speaker=route.speaker)
         self.persist_line(text, ts)
         self.on_final(text)
+
+    def _last_answer_text(self) -> str:
+        if isinstance(self.last_ans, dict):
+            return str(self.last_ans.get("answer") or "")
+        return ""
 
     # ---- OpenAI realtime STT (true streaming transcription) --------------------
     async def run_stt(self):
@@ -226,39 +222,73 @@ class Session:
             except Exception:
                 pass
 
+    async def _skip(self, text: str, reason: str, speaker: str, *, personal: bool = False):
+        """Ignore this turn. An in-flight suggestion keeps playing."""
+        self.speaker = speaker
+        answering = self.gen and not self.gen.done()
+        await self.send("transcript_skipped", reason=reason, text=text[:240], speaker=speaker)
+        dec = evaluate_turn(
+            text,
+            speaker,
+            True,
+            "QUESTION" if personal else "IRRELEVANT",
+            0.0,
+            True,
+            self.mode,
+            personal=personal,
+        )
+        await self.send("decision", **dec.to_dict())
+        if answering:
+            await self.set_phase(Phase.ANSWERING)
+            return
+        await self.set_phase(Phase.SUPPRESSED, reason=dec.reason)
+        await self.set_phase(Phase.LISTENING)
+
     async def process(self, text: str, label: str, conf: float):
-        allowed, skip_reason = should_run_question_pipeline(self.speaker, self.hands_free)
-        if not allowed:
-            await self.send("transcript_skipped", reason=skip_reason, text=text[:240])
-            dec = evaluate_turn(text, self.speaker, self.hands_free, "IRRELEVANT", 0.0, True, self.mode)
-            await self.send("decision", **dec.to_dict())
-            await self.set_phase(Phase.SUPPRESSED, reason=skip_reason)
-            await self.set_phase(Phase.LISTENING)
+        route = route_turn(text, label, last_question=self.last_q, last_answer=self._last_answer_text())
+        self.speaker = route.speaker
+        if route.certain and not route.should_answer:
+            await self._skip(text, route.reason, route.speaker, personal=route.kind == "personal")
             return
         t0 = time.monotonic()
         await self.set_phase(Phase.VALIDATING, reason="Evaluating utterance")
         try:
-            if label == "AMBIGUOUS":
+            if not route.certain:
                 if len(text.split()) < 4:
-                    label = "IRRELEVANT"
+                    await self._skip(text, "too_short", route.speaker)
+                    return
                 else:
                     r = await classify(text, self.ctx)
+                    if r.get("personal") or is_personal_question(str(r.get("question") or text)):
+                        await self._skip(text, "personal_question", "Interviewer", personal=True)
+                        return
+                    if r.get("speaker") == "candidate":
+                        await self._skip(text, "candidate_speech", "You")
+                        return
                     label, conf = r["type"], float(r.get("confidence") or 0)
                     if r.get("is_question") and r.get("question"):
                         text = r["question"]
                     elif not r.get("is_question"):
                         label = "STATEMENT"
+                    self.speaker = "Interviewer"
         except Exception as ex:
             await self.fail(ex)
             await self.set_phase(Phase.LISTENING)
             return
 
-        dec = evaluate_turn(text, self.speaker, self.hands_free, label, conf, True, self.mode)
+        if is_personal_question(text):
+            await self._skip(text, "personal_question", "Interviewer", personal=True)
+            return
+
+        dec = evaluate_turn(text, self.speaker, True, label, conf, True, self.mode)
         await self.send("decision", **dec.to_dict())
 
         if not dec.should_answer:
             if dec.tier == "medium" and label in QUESTION_TYPES:
                 await self.send("possible_question", question=text, confidence=dec.confidence)
+            if self.gen and not self.gen.done():
+                await self.set_phase(Phase.ANSWERING)
+                return
             await self.set_phase(Phase.SUPPRESSED, reason=dec.reason)
             await self.set_phase(Phase.LISTENING)
             return
@@ -353,10 +383,6 @@ class Session:
             self.ctx.profile = m["profile"]
         if "mode" in m:
             self.mode = m["mode"]
-        if "hands_free" in m:
-            self.hands_free = bool(m.get("hands_free"))
-        if m.get("speaker"):
-            self.speaker = str(m["speaker"])
         if m.get("meeting_id"):
             self.meeting_id = str(m["meeting_id"])
         stack = m.get("stack")

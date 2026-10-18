@@ -12,7 +12,6 @@ import {
   MeetingNotes,
   QuestionPanel,
   SavedMeeting,
-  SpeakerPicker,
   StatusIndicator,
   TabNav,
   formatTime,
@@ -87,10 +86,7 @@ export default function App() {
   const [llm, setLlm] = useState("groq");
   const [stt, setStt] = useState("groq");
   const [dbEnabled, setDbEnabled] = useState(false);
-  const [speaker, setSpeaker] = useState(store.get("coach.speaker") || "Interviewer");
   const [audioSource, setAudioSource] = useState<AudioSource>((store.get("coach.audio") as AudioSource) || "mic");
-  const [handsFree, setHandsFree] = useState(store.get("coach.handsFree") !== "0");
-  const [speakerHint, setSpeakerHint] = useState("");
   const [dialogue, setDialogue] = useState<DialogueEntry[]>(loadDialogue);
   const [savedMeetings, setSavedMeetings] = useState<SavedMeeting[]>([]);
   const [notesView, setNotesView] = useState<"live" | "saved">("live");
@@ -112,8 +108,8 @@ export default function App() {
   });
   const profileSyncRef = useRef<ReturnType<typeof setTimeout>>();
 
-  const live = useRef({ profile, mode, muted, llm, stt, speaker, meetingId, handsFree });
-  live.current = { profile, mode, muted, llm, stt, speaker, meetingId, handsFree };
+  const live = useRef({ profile, mode, muted, llm, stt, meetingId });
+  live.current = { profile, mode, muted, llm, stt, meetingId };
   const coach = useRef<Coach>();
   const stopMic = useRef<() => void>();
   const dialogueRef = useRef(dialogue);
@@ -153,8 +149,8 @@ export default function App() {
   }, [persistDialogue]);
 
   const recordLine = useCallback(
-    (text: string, ts?: number) => {
-      const next = appendDialogue(dialogueRef.current, text, ts ?? Date.now(), live.current.speaker);
+    (text: string, ts?: number, speaker = "Interviewer") => {
+      const next = appendDialogue(dialogueRef.current, text, ts ?? Date.now(), speaker);
       if (next !== dialogueRef.current) persistDialogue(next);
     },
     [persistDialogue],
@@ -170,14 +166,8 @@ export default function App() {
     return () => clearTimeout(profileSyncRef.current);
   }, [profile, auth.user]);
   useEffect(() => {
-    store.set("coach.speaker", speaker);
-  }, [speaker]);
-  useEffect(() => {
     store.set("coach.audio", audioSource);
   }, [audioSource]);
-  useEffect(() => {
-    store.set("coach.handsFree", handsFree ? "1" : "0");
-  }, [handsFree]);
 
   const loadAuth = useCallback(async () => {
     try {
@@ -222,22 +212,28 @@ export default function App() {
           type: "config",
           profile,
           mode,
-          speaker,
           meeting_id: meetingId,
-          hands_free: handsFree,
         }),
       600,
     );
     return () => clearTimeout(t);
-  }, [profile, mode, running, speaker, meetingId, handsFree]);
+  }, [profile, mode, running, meetingId]);
 
   const onEvent = useCallback(
     (e: Ev) => {
-      if (e.type === "transcript_final") recordLine(e.text, typeof e.ts === "number" ? e.ts : Date.now());
+      if (e.type === "transcript_final") {
+        recordLine(e.text, typeof e.ts === "number" ? e.ts : Date.now(), e.speaker || "Interviewer");
+      }
+      if (e.type === "transcript_skipped" && e.speaker) {
+        const entries = dialogueRef.current;
+        const last = entries[entries.length - 1];
+        if (last && last.text === e.text) {
+          persistDialogue([...entries.slice(0, -1), { ...last, speaker: e.speaker }]);
+        }
+      }
       if (e.type === "question_detected") {
         persistDialogue(tagLastAsInterviewer(dialogueRef.current, e.question));
       }
-      if (e.type === "speaker_status") setSpeakerHint(e.label || "");
       dispatch(e);
     },
     [recordLine, persistDialogue],
@@ -267,9 +263,7 @@ export default function App() {
       coach.current = new Coach(onEvent, () => ({
         profile: live.current.profile,
         mode: live.current.mode,
-        speaker: live.current.speaker,
         meeting_id: live.current.meetingId,
-        hands_free: live.current.handsFree,
       }));
       coach.current.connect();
       stopMic.current =
@@ -396,7 +390,6 @@ export default function App() {
         <div className="session-layout">
           <div className="session-toolbar">
             <StatusIndicator status={status} hint={running && muted ? "Muted" : undefined} />
-            <SpeakerPicker speaker={speaker} setSpeaker={setSpeaker} disabled={running && handsFree} />
           </div>
           {s.error && <div className="alert-error">{s.error}</div>}
           <AnswerPanel answer={s.answer} points={s.points} followUp={s.followUp} metrics={s.metrics} dev={dev} />
@@ -432,10 +425,6 @@ export default function App() {
                 <option value="mic">Microphone</option>
                 <option value="display">Meeting / tab audio</option>
               </select>
-            </label>
-            <label className="check-inline">
-              <input type="checkbox" checked={handsFree} disabled={running} onChange={(e) => setHandsFree(e.target.checked)} />
-              Hands-free (interviewer only)
             </label>
             <label className="check-inline">
               <input type="checkbox" checked={dev} onChange={(e) => setDev(e.target.checked)} />

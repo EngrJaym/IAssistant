@@ -286,18 +286,6 @@ body {
 .status-pill.info .dot { animation: pulse 1.4s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: 0.35; } }
 
-.speaker-select {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.8125rem;
-  color: var(--muted);
-}
-.speaker-select select {
-  width: auto;
-  min-width: 9rem;
-}
-
 .nav {
   position: fixed;
   left: 0;

@@ -56,10 +56,12 @@ def _intent_from_label(label: str, text: str) -> str:
 
 
 def _target(speaker: str, hands_free: bool) -> str:
+    """Only interviewer speech is aimed at the candidate. hands_free is ignored."""
+    del hands_free
     s = (speaker or "").strip().lower()
-    if hands_free:
-        return "candidate" if s == "interviewer" else "other"
-    return "candidate" if s in ("interviewer", "participant 1", "participant 2", "other", "") else "other"
+    if s in ("interviewer", "host", "recruiter"):
+        return "candidate"
+    return "other"
 
 
 def evaluate_turn(
@@ -70,7 +72,20 @@ def evaluate_turn(
     classifier_conf: float,
     turn_complete: bool,
     mode: str = "balanced",
+    personal: bool = False,
 ) -> TurnDecision:
+    if personal:
+        return TurnDecision(
+            intent="personal",
+            target="other",
+            turn_complete=turn_complete,
+            should_answer=False,
+            confidence=0.0,
+            reason="Personal question — not answered",
+            tier="low",
+            speaker=speaker or "Interviewer",
+        )
+
     intent = _intent_from_label(label, text)
     target = _target(speaker, hands_free)
     conf = float(classifier_conf)
@@ -125,7 +140,7 @@ def evaluate_turn(
 
 def _suppress_reason(intent: str, target: str, turn_complete: bool) -> str:
     if target != "candidate":
-        return "Not interviewer / not directed at you"
+        return "Candidate is answering — not a new interviewer question"
     if not turn_complete:
         return "Utterance still in progress"
     if intent == "statement":

@@ -23,3 +23,9 @@ def test_candidate_speech_not_targeted():
     d = evaluate_turn("What is Docker?", "You", True, "QUESTION", 0.95, True)
     assert d.should_answer is False
     assert d.target == "other"
+
+
+def test_personal_question_not_answered():
+    d = evaluate_turn("How old are you?", "Interviewer", True, "QUESTION", 0.95, True, personal=True)
+    assert d.should_answer is False
+    assert d.intent == "personal"

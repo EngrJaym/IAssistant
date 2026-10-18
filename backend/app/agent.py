@@ -37,8 +37,12 @@ def model_for(provider: str, answer_model: str | None = None) -> str:
 
 
 CLASSIFY_PROMPT = """You are an interview conversation classifier.
-Decide whether the latest interviewer transcript contains a genuine interview question requiring an answer.
-Return JSON only: {"is_question": true|false, "type": "QUESTION|FOLLOW_UP_QUESTION|CLARIFICATION_QUESTION|BEHAVIORAL_QUESTION|TECHNICAL_QUESTION|CODING_QUESTION|SYSTEM_DESIGN_QUESTION|RESUME_QUESTION|STATEMENT|GREETING|SMALL_TALK|ACKNOWLEDGEMENT|INCOMPLETE|IRRELEVANT", "confidence": 0.0, "question": "the complete standalone question", "reason": "short"}
+The transcript has no speaker labels. Decide who is speaking and whether it is a genuine interview question to answer.
+Return JSON only: {"is_question": true|false, "speaker": "interviewer|candidate", "personal": true|false, "type": "QUESTION|FOLLOW_UP_QUESTION|CLARIFICATION_QUESTION|BEHAVIORAL_QUESTION|TECHNICAL_QUESTION|CODING_QUESTION|SYSTEM_DESIGN_QUESTION|RESUME_QUESTION|STATEMENT|GREETING|SMALL_TALK|ACKNOWLEDGEMENT|INCOMPLETE|IRRELEVANT", "confidence": 0.0, "question": "the complete standalone question", "reason": "short"}
+speaker=interviewer when they are asking the candidate something.
+speaker=candidate when the speaker is answering, explaining their own experience in first person, or reading an answer aloud. Never treat that as a question to answer.
+personal=true for questions about age, family, marital or relationship status, religion, politics, health, disability, race, ethnicity, nationality, home address, or current salary / salary history.
+personal=false for professional questions, including "tell me about yourself", experience, strengths, weaknesses, and salary expectations.
 Ignore greetings, acknowledgements, statements, small talk, incomplete thoughts and filler.
 A question does not need a '?'. Short follow-ups ("What about performance?") are questions when recent context supports them.
 If the interviewer is still mid-sentence, return is_question=false. If they corrected an earlier question, use the newest complete one."""
@@ -84,6 +88,10 @@ async def classify(text: str, ctx: Context) -> dict:
         messages=[{"role": "system", "content": CLASSIFY_PROMPT},
                   {"role": "user", "content": f"Recent: {' | '.join(ctx.recent)}\nPrevious question: {ctx.turns[-1][0] if ctx.turns else ''}\nLatest transcript: {text}"}])
     d = json.loads(r.choices[0].message.content or "{}")
+    d["personal"] = bool(d.get("personal"))
+    d["speaker"] = "candidate" if str(d.get("speaker") or "").lower() == "candidate" else "interviewer"
+    if d["personal"]:
+        d["is_question"] = False
     if d.get("type") not in QUESTION_TYPES: d["type"] = "QUESTION" if d.get("is_question") else "STATEMENT"
     return d
 

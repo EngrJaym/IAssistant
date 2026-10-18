@@ -7,7 +7,6 @@ import {
   LiveTranscript,
   MeetingNotes,
   QuestionPanel,
-  SpeakerPicker,
   StatusIndicator,
   TabNav,
   formatTime,
@@ -40,6 +39,7 @@ describe("panels", () => {
   it("renders question and answer content", () => {
     render(
       <>
+        <QuestionPanel question="" possible="Maybe a question?" />
         <QuestionPanel question="Why Docker?" possible="" />
         <AnswerPanel
           answer="Containers package apps."
@@ -93,15 +93,6 @@ describe("MeetingNotes", () => {
     expect(screen.queryByText("I use Kubernetes")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Clear" }));
     expect(onClear).toHaveBeenCalled();
-  });
-});
-
-describe("SpeakerPicker", () => {
-  it("changes active speaker", () => {
-    const setSpeaker = vi.fn();
-    render(<SpeakerPicker speaker="Interviewer" setSpeaker={setSpeaker} />);
-    fireEvent.change(screen.getByLabelText("Active speaker"), { target: { value: "You" } });
-    expect(setSpeaker).toHaveBeenCalledWith("You");
   });
 });
 

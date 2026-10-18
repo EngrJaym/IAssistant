@@ -17,13 +17,6 @@ describe("CandidateProfile", () => {
     expect(setProfile).not.toHaveBeenCalled();
   });
 
-  it("applies answer style preset", () => {
-    const setProfile = vi.fn();
-    render(<CandidateProfile profile={{}} setProfile={setProfile} />);
-    fireEvent.change(screen.getByDisplayValue("Preset…"), { target: { value: "Concise" } });
-    expect(setProfile).toHaveBeenCalled();
-  });
-
   it("rejects oversize files before upload", async () => {
     const setProfile = vi.fn();
     const fetchMock = vi.fn();

@@ -4,8 +4,6 @@ import { ThemeToggle } from "./ThemeToggle";
 
 export type DialogueEntry = { id: string; ts: number; speaker: string; text: string };
 
-export const SPEAKERS = ["Interviewer", "You", "Participant 1", "Participant 2", "Other"] as const;
-
 const STATUS_CLASS: Record<string, string> = {
   READY: "idle",
   LISTENING: "ok",
@@ -273,27 +271,6 @@ export function MeetingNotes({
         ))}
       </div>
     </section>
-  );
-}
-
-export function SpeakerPicker({
-  speaker,
-  setSpeaker,
-  disabled,
-}: {
-  speaker: string;
-  setSpeaker: (s: string) => void;
-  disabled?: boolean;
-}) {
-  return (
-    <label className="speaker-select">
-      <span className="sr-only">Speaker</span>
-      <select value={speaker} disabled={disabled} onChange={(e) => setSpeaker(e.target.value)} aria-label="Active speaker">
-        {SPEAKERS.map((s) => (
-          <option key={s} value={s}>{s}</option>
-        ))}
-      </select>
-    </label>
   );
 }
 

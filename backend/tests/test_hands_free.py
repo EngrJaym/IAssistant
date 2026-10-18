@@ -6,15 +6,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import pytest
 from app import main
 from app import session_ws
-from app.speaker_gate import should_run_question_pipeline
 from app.transcript_merge import merge_chunk_text
+from app.turn_router import route_turn
 
 
-def test_speaker_gate_hands_free():
-    assert should_run_question_pipeline("Interviewer", True) == (True, "interviewer")
-    assert should_run_question_pipeline("You", True)[0] is False
-    assert should_run_question_pipeline("Other", True)[0] is False
-    assert should_run_question_pipeline("You", False)[0] is True
+def test_only_interviewer_questions_are_answerable():
+    assert route_turn("What is Docker?", "QUESTION").should_answer is True
+    assert route_turn("I used Docker to ship the API.", "AMBIGUOUS").should_answer is False
+    assert route_turn("How old are you?", "QUESTION").should_answer is False
 
 
 def test_merge_overlapping_chunks():
@@ -41,11 +40,15 @@ def test_candidate_speech_does_not_answer(monkeypatch):
 
         ws = WS()
         s = main.Session(ws, main._resolve_for_session, main._resolved)
-        s.hands_free = True
-        s.speaker = "You"
+        await s.process("I would package the service with Docker and deploy it on Kubernetes.", "AMBIGUOUS", 0.4)
+        await s.process("How old are you?", "QUESTION", 0.95)
         await s.process("What is Docker?", "QUESTION", 0.95)
+        if s.gen:
+            await s.gen
         return ws.ev
 
     ev = asyncio.run(go())
-    assert "answer_start" not in [e["type"] for e in ev]
-    assert any(e["type"] == "transcript_skipped" for e in ev)
+    types = [e["type"] for e in ev]
+    assert types.count("answer_start") == 1
+    skipped = [e for e in ev if e["type"] == "transcript_skipped"]
+    assert {e["reason"] for e in skipped} >= {"candidate_speech", "personal_question"}
