@@ -4,5 +4,6 @@ WORKDIR /srv
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 COPY app app
+ENV PORT=8000
 EXPOSE 8000
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips='*'"]

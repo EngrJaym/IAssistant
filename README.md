@@ -112,6 +112,29 @@ The app opens on a login page until someone is signed in. There is no sign-up. G
 
 Set `AUTH_REQUIRED=false` only if you need the older anonymous mode for local API tests.
 
+## Deploy on Render (Docker Hub)
+
+Images: `engrjaym07/iassistant-backend` and `engrjaym07/iassistant-frontend`. The **frontend** nginx proxies `/api` and `/ws` to the **backend** so the browser stays on one origin (cookies, OAuth, and WebSockets work).
+
+1. **Rebuild and push** after pulling these changes (v1.0.0 on Hub must include the Render-ready entrypoint):
+   ```bash
+   docker build -t engrjaym07/iassistant-backend:v1.0.1 ./backend
+   docker build -t engrjaym07/iassistant-frontend:v1.0.1 ./frontend
+   docker push engrjaym07/iassistant-backend:v1.0.1
+   docker push engrjaym07/iassistant-frontend:v1.0.1
+   ```
+   Update `image.url` tags in `render.yaml` if you use a new version.
+
+2. **New Blueprint** on [Render](https://render.com) → connect repo → use `render.yaml`, or create two **Web Services** from the images manually.
+
+3. **Backend env** (Render dashboard): `GROQ_API_KEY`, `SESSION_SECRET`, `ALLOWED_EMAILS`, optional OAuth and `AUTH_PASSWORDS`. Set **`APP_BASE_URL`** to your frontend’s public URL, e.g. `https://iassistant-frontend.onrender.com` (required for Google OAuth redirect).
+
+4. **Frontend env**: `render.yaml` sets `BACKEND_HOSTPORT` from the backend service (private network). If API calls fail, set **`BACKEND_URL`** explicitly to `https://<your-backend>.onrender.com` instead.
+
+5. **Google OAuth** redirect URI: `{APP_BASE_URL}/api/auth/callback/google` (frontend URL, not backend).
+
+6. **Smoke test locally** with Hub images: `docker compose -f docker-compose.hub.yml up` (set `.env` on backend).
+
 ## Privacy
 
 Profile and meeting data live in process memory on the backend (not written to disk). Session cookies are httpOnly. Third-party STT/LLM providers still receive audio/text you send them when those stacks are used.

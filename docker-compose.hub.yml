@@ -1,0 +1,21 @@
+# Run published images (same layout as Render: frontend proxies /api and /ws to backend).
+services:
+  backend:
+    image: engrjaym07/iassistant-backend:v1.0.0
+    env_file: .env
+    ports: ["127.0.0.1:8000:8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  frontend:
+    image: engrjaym07/iassistant-frontend:v1.0.0
+    environment:
+      BACKEND_URL: http://backend:8000
+    ports: ["80:80"]
+    depends_on:
+      backend: { condition: service_healthy }
+    restart: unless-stopped

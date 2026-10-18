@@ -1,6 +1,7 @@
 """FastAPI app: REST helpers + /ws/interview (mic audio in -> transcripts, detection and streamed answers out)."""
 import io
 import json
+import re
 from contextlib import asynccontextmanager
 import httpx
 from fastapi import FastAPI, Request, UploadFile, WebSocket
@@ -82,10 +83,35 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="IAssistant", lifespan=lifespan)
-_origins = ["http://localhost", "http://127.0.0.1", "http://localhost:80", "http://127.0.0.1:80", "http://localhost:5173", "http://127.0.0.1:5173"]
+
+
+def _cors_origins() -> list[str]:
+    origins = [
+        "http://localhost",
+        "http://127.0.0.1",
+        "http://localhost:80",
+        "http://127.0.0.1:80",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ]
+    if config.APP_BASE_URL:
+        origins.append(config.APP_BASE_URL)
+    for part in re.split(r"[,;\s]+", config.CORS_ORIGINS or ""):
+        part = part.strip()
+        if part:
+            origins.append(part.rstrip("/"))
+    return list(dict.fromkeys(origins))
+
+
+def _session_https_only() -> bool:
+    if config.SESSION_COOKIE_SECURE:
+        return True
+    return config.APP_BASE_URL.startswith("https://")
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_origins,
+    allow_origins=_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -95,7 +121,7 @@ app.add_middleware(
     SessionMiddleware,
     secret_key=config.SESSION_SECRET or "dev-session-not-for-production",
     same_site="lax",
-    https_only=False,
+    https_only=_session_https_only(),
 )
 
 

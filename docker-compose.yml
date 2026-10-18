@@ -41,6 +41,8 @@ services:
   frontend:
     build: ./frontend
     env_file: .env
+    environment:
+      BACKEND_URL: http://backend:8000
     ports: ["80:80"]
     depends_on:
       backend: { condition: service_healthy }
