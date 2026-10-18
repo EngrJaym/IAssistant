@@ -77,6 +77,15 @@ describe("Header", () => {
     );
     expect(screen.getByRole("link", { name: /Sign in/i })).toHaveAttribute("href", "/api/auth/login/google");
   });
+
+  it("shows a theme switch and the logo", () => {
+    render(<Header />);
+    expect(screen.getByRole("heading", { name: "IAssistant" })).toBeInTheDocument();
+    const theme = screen.getByRole("switch", { name: /mode/i });
+    const before = theme.getAttribute("aria-checked");
+    fireEvent.click(theme);
+    expect(theme.getAttribute("aria-checked")).not.toBe(before);
+  });
 });
 
 describe("Controls", () => {

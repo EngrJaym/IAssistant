@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { validateResumeFile } from "../lib/resumeFile";
+import { BrandLogo } from "./BrandLogo";
 import { ThemeToggle } from "./ThemeToggle";
 
 const STATUS_CLASS: Record<string, string> = {
@@ -52,12 +53,11 @@ export function Header({ auth }: { auth?: AuthBarProps }) {
   return (
     <header className="app-header">
       <div className="header-row">
-        <div className="brand">
-          <img className="brand-logo" src="/logo.svg" width={36} height={36} alt="" />
-          <h1 className="brand-title">IAssistant</h1>
-        </div>
+        <h1 className="brand" aria-label="IAssistant">
+          <BrandLogo />
+        </h1>
         <div className="auth-bar">
-          <ThemeToggle compact />
+          <ThemeToggle />
           {auth?.enabled && (
             <>
               {auth.user ? (
