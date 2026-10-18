@@ -214,9 +214,12 @@ export function TabNav({
   );
 }
 
+const LEGACY_PLAIN =
+  "Answer as me, in the first person, using only my resume and profile. Use short everyday words a non-technical person can follow. Give a concise explanation, one simple example, and one analogy a beginner would understand. If you must use a technical term, explain it in plain language right away.";
+
 export const STYLE_PRESETS: Record<string, string> = {
   Plain:
-    "Answer as me, in the first person, using only my resume and profile. Use short everyday words a non-technical person can follow. Give a concise explanation, one simple example, and one analogy a beginner would understand. If you must use a technical term, explain it in plain language right away.",
+    "Answer as me, in the first person. Answer the question correctly even when it is not on my resume. Treat my resume as background: use a real detail when it fits, relate the answer to something I actually did when that is natural, and otherwise do not relate it or mention the resume. Never apologize, say you lack resume details, or frame the answer as a weakness. Use short everyday words a non-technical person can follow. Give a concise explanation, one simple example, and one analogy a beginner would understand. If you must use a technical term, explain it in plain language right away.",
   Concise: "Keep answers short and conversational, as if spoken aloud.",
   Senior: "Answer as a senior engineer with trade-offs, under 120 words.",
   STAR: "Use natural STAR stories from my resume only.",
@@ -224,6 +227,14 @@ export const STYLE_PRESETS: Record<string, string> = {
 };
 
 export const DEFAULT_STYLE = "Plain";
+
+export function withDefaultStyle(profile: Record<string, string>): Record<string, string> {
+  const instructions = (profile.instructions ?? "").trim();
+  if (!instructions || instructions === LEGACY_PLAIN) {
+    return { ...profile, instructions: STYLE_PRESETS[DEFAULT_STYLE] };
+  }
+  return profile;
+}
 
 export function CandidateProfile({ profile, setProfile }: { profile: Record<string, string>; setProfile: (p: Record<string, string>) => void }) {
   const set = (k: string, v: string) => setProfile({ ...profile, [k]: v });

@@ -47,10 +47,11 @@ Ignore greetings, acknowledgements, statements, small talk, incomplete thoughts 
 A question does not need a '?'. Short follow-ups ("What about performance?") are questions when recent context supports them.
 If the interviewer is still mid-sentence, return is_question=false. If they corrected an earlier question, use the newest complete one."""
 
-ANSWER_PROMPT = """You speak as the candidate in an interview. Answer in the first person using ONLY the candidate profile, resume, job description, and recent interview context.
-Never invent experience, metrics, companies, or accomplishments. If the resume does not cover the question, say so honestly and connect it to something the candidate did do.
-Default style: a concise spoken answer a non-technical person can follow. Use short everyday words. Include one simple example from the resume when it fits, and one analogy a beginner would understand. If a technical term is necessary, explain it in plain language immediately. No markdown, headings, or bullet lists. Target about {min_words}–{words} words.
-User instructions may change tone or length. They never override the rule against inventing experience, and they never change the JSON output format.
+ANSWER_PROMPT = """You speak as the candidate in an interview. Answer the question correctly in the first person, as something you would say out loud.
+The resume, profile, and job description are background only. If a real detail there supports the answer, use it. If you can tie the answer to something the candidate actually did, do that. If you cannot, answer the question on its own and do not mention the resume.
+Never invent experience, metrics, companies, or accomplishments. Never apologize, claim a gap, or lead with a weakness such as not having the topic on the resume. A correct answer matters more than staying inside the resume.
+Default style: a concise spoken answer a non-technical person can follow. Use short everyday words. Include one simple example when it fits, and one analogy a beginner would understand. If a technical term is necessary, explain it in plain language immediately. No markdown, headings, or bullet lists. Target about {min_words}–{words} words.
+User instructions may change tone or length. They never override the rule against inventing experience, they never override answering correctly when the resume is silent, and they never change the JSON output format.
 Return JSON only: {{"answer": "...", "key_points": [], "follow_up": "", "confidence": "high|medium|low"}}"""
 
 _LABEL = {"target": "Applying for"}
@@ -120,7 +121,7 @@ def system_prompt(ctx: Context) -> str:
     s = ANSWER_PROMPT.format(min_words=config.MIN_ANSWER_WORDS, words=config.MAX_WORDS) + "\n\nCANDIDATE:\n" + ctx.profile_text()
     ins = (ctx.profile.get("instructions") or "").strip()[:2000]
     if ins:
-        s += "\n\nUSER INSTRUCTIONS (style, focus, persona and length only; they never override the rule against inventing experience, nor the JSON output format):\n" + ins
+        s += "\n\nUSER INSTRUCTIONS (style, focus, persona and length only; they never override the rule against inventing experience, nor answering correctly when the resume is silent, nor the JSON output format):\n" + ins
     return s
 
 

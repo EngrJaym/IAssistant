@@ -8,6 +8,7 @@ import {
   Controls,
   DEFAULT_STYLE,
   Header,
+  withDefaultStyle,
   LiveTranscript,
   LoginPage,
   STYLE_PRESETS,
@@ -34,9 +35,7 @@ const store = {
 
 function loadProfile(): Record<string, string> {
   try {
-    const parsed = JSON.parse(store.get("coach.profile") || "{}");
-    if (!parsed.instructions?.trim()) parsed.instructions = STYLE_PRESETS[DEFAULT_STYLE];
-    return parsed;
+    return withDefaultStyle(JSON.parse(store.get("coach.profile") || "{}"));
   } catch {
     return { instructions: STYLE_PRESETS[DEFAULT_STYLE] };
   }
@@ -89,9 +88,7 @@ export default function App() {
       setAuth(a);
       if (a.user && a.profile && Object.keys(a.profile).length) {
         setProfile((prev) => {
-          const next = { ...prev, ...a.profile };
-          if (!next.instructions?.trim()) next.instructions = STYLE_PRESETS[DEFAULT_STYLE];
-          return next;
+          return withDefaultStyle({ ...prev, ...a.profile });
         });
       }
     } catch {

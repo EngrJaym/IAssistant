@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CandidateProfile, DEFAULT_STYLE, STYLE_PRESETS } from "./components";
+import { CandidateProfile, DEFAULT_STYLE, STYLE_PRESETS, withDefaultStyle } from "./components";
 
 describe("CandidateProfile", () => {
   it("selects the plain-language style by default", () => {
@@ -14,6 +14,18 @@ describe("CandidateProfile", () => {
     expect(screen.getByPlaceholderText("How to answer (optional)")).toHaveValue(STYLE_PRESETS.Plain);
     expect(STYLE_PRESETS.Plain).toMatch(/analogy/i);
     expect(STYLE_PRESETS.Plain).toMatch(/resume/i);
+    expect(STYLE_PRESETS.Plain).toMatch(/even when it is not on my resume/i);
+    expect(STYLE_PRESETS.Plain).not.toMatch(/using only my resume/i);
+  });
+
+  it("upgrades a saved plain style that was limited to the resume", () => {
+    const legacy =
+      "Answer as me, in the first person, using only my resume and profile. Use short everyday words a non-technical person can follow. Give a concise explanation, one simple example, and one analogy a beginner would understand. If you must use a technical term, explain it in plain language right away.";
+    expect(withDefaultStyle({ instructions: legacy, resume: "Python" })).toEqual({
+      instructions: STYLE_PRESETS.Plain,
+      resume: "Python",
+    });
+    expect(withDefaultStyle({ instructions: "Keep it formal." }).instructions).toBe("Keep it formal.");
   });
 
   afterEach(() => {
