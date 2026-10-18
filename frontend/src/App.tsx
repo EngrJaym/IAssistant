@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { apiFetch, fetchAuthMe, logout, saveProfile, type AuthState } from "./services/api";
+import { initialSessionState, reduceSessionState } from "./sessionState";
 import { Coach, Ev, startAudioCapture, startBrowserSTT, type AudioSource } from "./services/websocket";
 import {
   AnswerPanel,
@@ -16,60 +17,6 @@ import {
   TabNav,
   formatTime,
 } from "./components/components";
-
-const init = {
-  status: "READY",
-  partial: "",
-  finals: [] as string[],
-  question: "",
-  qtype: "",
-  answer: "",
-  points: [] as string[],
-  followUp: "",
-  confidence: "",
-  possible: "",
-  metrics: null as any,
-  error: "",
-  detected: false,
-  phaseReason: "",
-};
-type S = typeof init;
-
-function reduce(s: S, e: Ev): S {
-  switch (e.type) {
-    case "status":
-      return { ...s, status: e.status, error: e.status === "ERROR" ? s.error : "" };
-    case "phase":
-      return { ...s, status: e.status, phaseReason: e.reason || "" };
-    case "transcript_partial":
-      return { ...s, partial: e.text };
-    case "transcript_final":
-      return { ...s, partial: "", finals: [...s.finals.slice(-3), e.text] };
-    case "possible_question":
-      return { ...s, possible: e.question };
-    case "question_detected":
-      return { ...s, question: e.question, qtype: e.qtype, detected: true, possible: "", error: "" };
-    case "answer_start":
-      return { ...s, question: e.question, answer: "", points: [], followUp: "", confidence: "", metrics: null };
-    case "answer_token":
-      return { ...s, answer: s.answer + e.text };
-    case "answer_complete":
-      return {
-        ...s,
-        answer: e.answer,
-        points: e.key_points,
-        followUp: e.follow_up,
-        confidence: e.confidence,
-        metrics: e.metrics,
-      };
-    case "error":
-      return { ...s, error: e.message, status: "ERROR" };
-    case "clear":
-      return { ...init, status: s.status === "ERROR" ? "READY" : s.status };
-    default:
-      return s;
-  }
-}
 
 const store = {
   get: (k: string) => {
@@ -131,7 +78,7 @@ function linesFromApi(lines: { speaker: string; text: string; ts: number }[]): D
 }
 
 export default function App() {
-  const [s, dispatch] = useReducer(reduce, init);
+  const [s, dispatch] = useReducer(reduceSessionState, initialSessionState);
   const [running, setRunning] = useState(false);
   const [muted, setMuted] = useState(false);
   const [mode, setMode] = useState("balanced");

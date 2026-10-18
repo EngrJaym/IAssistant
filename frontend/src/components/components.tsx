@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from "react";
+import { validateResumeFile } from "../lib/resumeFile";
 import { ThemeToggle } from "./ThemeToggle";
 
 export type DialogueEntry = { id: string; ts: number; speaker: string; text: string };
@@ -320,8 +321,6 @@ export function TabNav({
   );
 }
 
-const RESUME_MAX_BYTES = 10 * 1024 * 1024;
-
 const PRESETS: Record<string, string> = {
   Concise: "Keep answers short and conversational, as if spoken aloud.",
   Senior: "Answer as a senior engineer with trade-offs, under 120 words.",
@@ -339,13 +338,9 @@ export function CandidateProfile({ profile, setProfile }: { profile: Record<stri
   async function upload(f?: File) {
     if (!f) return;
     setUploadErr("");
-    const name = f.name.toLowerCase();
-    if (!name.endsWith(".pdf") && !name.endsWith(".docx")) {
-      setUploadErr("Use a PDF or Word (.docx) file.");
-      return;
-    }
-    if (f.size > RESUME_MAX_BYTES) {
-      setUploadErr("File must be 10 MB or smaller.");
+    const validationError = validateResumeFile(f);
+    if (validationError) {
+      setUploadErr(validationError);
       return;
     }
     const fd = new FormData();

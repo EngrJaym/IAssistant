@@ -1,13 +1,7 @@
 import io
 
-from fastapi.testclient import TestClient
 
-from app.main import app
-
-client = TestClient(app)
-
-
-def test_parse_resume_rejects_txt():
+def test_parse_resume_rejects_txt(client):
     r = client.post(
         "/api/parse-resume",
         files={"file": ("resume.txt", b"hello", "text/plain")},
@@ -16,7 +10,7 @@ def test_parse_resume_rejects_txt():
     assert "PDF" in r.json()["error"]
 
 
-def test_parse_resume_rejects_oversize():
+def test_parse_resume_rejects_oversize(client):
     r = client.post(
         "/api/parse-resume",
         files={"file": ("resume.pdf", b"x" * (10 * 1024 * 1024 + 1), "application/pdf")},
@@ -25,7 +19,7 @@ def test_parse_resume_rejects_oversize():
     assert "10 MB" in r.json()["error"]
 
 
-def test_parse_resume_accepts_small_docx():
+def test_parse_resume_accepts_small_docx(client):
     import docx
 
     buf = io.BytesIO()

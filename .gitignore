@@ -5,3 +5,7 @@ node_modules/
 dist/
 *.pyc
 .pytest_cache/
+htmlcov/
+.coverage
+coverage.xml
+frontend/coverage/
