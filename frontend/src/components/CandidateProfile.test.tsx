@@ -1,8 +1,21 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CandidateProfile } from "./components";
+import { CandidateProfile, DEFAULT_STYLE, STYLE_PRESETS } from "./components";
 
 describe("CandidateProfile", () => {
+  it("selects the plain-language style by default", () => {
+    render(
+      <CandidateProfile
+        profile={{ instructions: STYLE_PRESETS[DEFAULT_STYLE] }}
+        setProfile={() => {}}
+      />,
+    );
+    expect(screen.getByLabelText("Style")).toHaveValue("Plain");
+    expect(screen.getByPlaceholderText("How to answer (optional)")).toHaveValue(STYLE_PRESETS.Plain);
+    expect(STYLE_PRESETS.Plain).toMatch(/analogy/i);
+    expect(STYLE_PRESETS.Plain).toMatch(/resume/i);
+  });
+
   afterEach(() => {
     vi.unstubAllGlobals();
   });

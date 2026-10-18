@@ -1,8 +1,6 @@
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { validateResumeFile } from "../lib/resumeFile";
 import { ThemeToggle } from "./ThemeToggle";
-
-export type DialogueEntry = { id: string; ts: number; speaker: string; text: string };
 
 const STATUS_CLASS: Record<string, string> = {
   READY: "idle",
@@ -40,13 +38,6 @@ const STATUS_LABEL: Record<string, string> = {
 
 export function formatTime(ts: number) {
   return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-}
-
-function speakerClass(name: string) {
-  const n = name.toLowerCase();
-  if (n === "you") return "you";
-  if (n === "interviewer") return "interviewer";
-  return "";
 }
 
 export type AuthBarProps = {
@@ -110,45 +101,18 @@ export const LiveTranscript = ({ partial, finals }: { partial: string; finals: s
   </details>
 );
 
-export const QuestionPanel = ({ question, possible }: { question: string; possible: string }) => {
-  if (!question && !possible) return null;
-  return (
-    <section className="card">
-      <h2 className="card-label">Question</h2>
-      <p className="card-body">{question || possible}</p>
-    </section>
-  );
-};
-
 export const AnswerPanel = ({
   answer,
-  points,
-  followUp,
   metrics,
   dev,
 }: {
   answer: string;
-  points: string[];
-  followUp: string;
   metrics: any;
   dev: boolean;
 }) => (
   <section className="card card-answer">
     <h2 className="card-label">Suggestion</h2>
     <p className="card-body card-body-lg">{answer || <span className="muted">Your answer will appear here.</span>}</p>
-    {(points.length > 0 || followUp) && (
-      <details className="card-more">
-        <summary>More</summary>
-        {points.length > 0 && (
-          <ul className="clean">
-            {points.map((p, i) => (
-              <li key={i}>{p}</li>
-            ))}
-          </ul>
-        )}
-        {followUp && <p className="muted">{followUp}</p>}
-      </details>
-    )}
     {dev && metrics && (
       <pre className="metrics">
         {metrics.cached
@@ -159,132 +123,15 @@ export const AnswerPanel = ({
   </section>
 );
 
-export type SavedMeeting = {
-  id: string;
-  title: string;
-  started_at: string | null;
-  ended_at: string | null;
-  line_count: number;
-  stack?: string;
-};
-
-function formatMeetingWhen(iso: string | null) {
-  if (!iso) return "—";
-  try {
-    return new Date(iso).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
-  } catch {
-    return iso;
-  }
-}
-
-export function MeetingNotes({
-  entries,
-  savedMeetings,
-  dbEnabled,
-  view,
-  setView,
-  selectedMeetingId,
-  onSelectMeeting,
-  onRefreshSaved,
-  onExportDocx,
-  onClear,
-  onExport,
-  onDeleteSaved,
-  currentMeetingId,
-}: {
-  entries: DialogueEntry[];
-  savedMeetings: SavedMeeting[];
-  currentMeetingId: string | null;
-  dbEnabled: boolean;
-  view: "live" | "saved";
-  setView: (v: "live" | "saved") => void;
-  selectedMeetingId: string | null;
-  onSelectMeeting: (id: string | null) => void;
-  onRefreshSaved: () => void;
-  onExportDocx: (meetingId: string) => void;
-  onClear: () => void;
-  onExport: (format: "txt" | "md") => void;
-  onDeleteSaved: (id: string) => void;
-}) {
-  const [q, setQ] = useState("");
-  const filtered = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    if (!needle) return entries;
-    return entries.filter((e) => e.text.toLowerCase().includes(needle) || e.speaker.toLowerCase().includes(needle));
-  }, [entries, q]);
-
-  const exportDocxId =
-    view === "saved" && selectedMeetingId
-      ? selectedMeetingId
-      : view === "live" && currentMeetingId
-        ? currentMeetingId
-        : null;
-
-  return (
-    <section className="card">
-      {dbEnabled && (
-        <div className="seg-control">
-          <button type="button" className={view === "live" ? "active" : ""} onClick={() => setView("live")}>Live</button>
-          <button type="button" className={view === "saved" ? "active" : ""} onClick={() => { setView("saved"); onRefreshSaved(); }}>Saved</button>
-        </div>
-      )}
-
-      {dbEnabled && view === "saved" && (
-        <div className="meeting-history">
-          {!savedMeetings.length && <p className="muted">No saved sessions yet.</p>}
-          {savedMeetings.map((m) => (
-            <button
-              key={m.id}
-              type="button"
-              className={`meeting-card ${selectedMeetingId === m.id ? "active" : ""}`}
-              onClick={() => onSelectMeeting(m.id)}
-            >
-              <strong>{formatMeetingWhen(m.started_at)}</strong>
-              <span className="muted">{m.line_count} lines</span>
-            </button>
-          ))}
-        </div>
-      )}
-
-      <div className="notes-toolbar">
-        <input type="search" placeholder="Search" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search notes" />
-        {exportDocxId && (
-          <button type="button" className="btn btn-sm" onClick={() => onExportDocx(exportDocxId)}>Export</button>
-        )}
-        {view === "live" && entries.length > 0 && (
-          <button type="button" className="btn btn-sm btn-ghost" onClick={onClear}>Clear</button>
-        )}
-        {view === "saved" && selectedMeetingId && (
-          <button type="button" className="btn btn-sm btn-ghost" onClick={() => confirm("Delete?") && onDeleteSaved(selectedMeetingId)}>Delete</button>
-        )}
-      </div>
-      <div className="notes-list" role="log" aria-live="polite">
-        {!filtered.length && <p className="muted">No lines yet.</p>}
-        {filtered.map((e) => (
-          <article key={e.id} className="note-row">
-            <div className="note-meta">
-              <time className="note-time">{formatTime(e.ts)}</time>
-              <span className={`speaker-tag ${speakerClass(e.speaker)}`}>{e.speaker}</span>
-            </div>
-            <p className="note-text">{e.text}</p>
-          </article>
-        ))}
-      </div>
-    </section>
-  );
-}
-
 export function TabNav({
   tab,
   setTab,
 }: {
-  tab: "session" | "notes" | "setup";
-  setTab: (t: "session" | "notes" | "setup") => void;
-  noteCount?: number;
+  tab: "session" | "setup";
+  setTab: (t: "session" | "setup") => void;
 }) {
   const items: { id: typeof tab; label: string }[] = [
     { id: "session", label: "Coach" },
-    { id: "notes", label: "Notes" },
     { id: "setup", label: "Setup" },
   ];
   return (
@@ -298,15 +145,20 @@ export function TabNav({
   );
 }
 
-const PRESETS: Record<string, string> = {
+export const STYLE_PRESETS: Record<string, string> = {
+  Plain:
+    "Answer as me, in the first person, using only my resume and profile. Use short everyday words a non-technical person can follow. Give a concise explanation, one simple example, and one analogy a beginner would understand. If you must use a technical term, explain it in plain language right away.",
   Concise: "Keep answers short and conversational, as if spoken aloud.",
   Senior: "Answer as a senior engineer with trade-offs, under 120 words.",
   STAR: "Use natural STAR stories from my resume only.",
   Simple: "Explain simply, under 90 words.",
 };
 
+export const DEFAULT_STYLE = "Plain";
+
 export function CandidateProfile({ profile, setProfile }: { profile: Record<string, string>; setProfile: (p: Record<string, string>) => void }) {
   const set = (k: string, v: string) => setProfile({ ...profile, [k]: v });
+  const styleName = Object.keys(STYLE_PRESETS).find((k) => STYLE_PRESETS[k] === (profile.instructions ?? "")) ?? "";
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadName, setUploadName] = useState("");
@@ -343,9 +195,13 @@ export function CandidateProfile({ profile, setProfile }: { profile: Record<stri
       <h2 className="card-label">Your profile</h2>
       <label className="field">
         Style
-        <select value="" onChange={(e) => e.target.value && set("instructions", PRESETS[e.target.value])}>
-          <option value="">Preset…</option>
-          {Object.keys(PRESETS).map((k) => (
+        <select
+          aria-label="Style"
+          value={styleName}
+          onChange={(e) => set("instructions", e.target.value ? STYLE_PRESETS[e.target.value] : "")}
+        >
+          <option value="">Custom</option>
+          {Object.keys(STYLE_PRESETS).map((k) => (
             <option key={k} value={k}>{k}</option>
           ))}
         </select>

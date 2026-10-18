@@ -5,8 +5,6 @@ import {
   Controls,
   Header,
   LiveTranscript,
-  MeetingNotes,
-  QuestionPanel,
   StatusIndicator,
   TabNav,
   formatTime,
@@ -33,26 +31,25 @@ describe("TabNav", () => {
     fireEvent.click(screen.getByRole("button", { name: "Setup" }));
     expect(setTab).toHaveBeenCalledWith("setup");
   });
+
+  it("does not offer a notes tab", () => {
+    render(<TabNav tab="session" setTab={() => {}} />);
+    expect(screen.queryByRole("button", { name: "Notes" })).not.toBeInTheDocument();
+  });
 });
 
 describe("panels", () => {
-  it("renders question and answer content", () => {
+  it("renders the suggestion without extra notes", () => {
     render(
-      <>
-        <QuestionPanel question="" possible="Maybe a question?" />
-        <QuestionPanel question="Why Docker?" possible="" />
-        <AnswerPanel
-          answer="Containers package apps."
-          points={["Portable"]}
-          followUp="Any limits?"
-          metrics={{ total_ms: 100, detection_ms: 20 }}
-          dev
-        />
-      </>,
+      <AnswerPanel
+        answer="Containers package apps."
+        metrics={{ total_ms: 100, detection_ms: 20 }}
+        dev
+      />,
     );
-    expect(screen.getByText("Why Docker?")).toBeInTheDocument();
     expect(screen.getByText(/Containers package/)).toBeInTheDocument();
-    expect(screen.getByText("Portable")).toBeInTheDocument();
+    expect(screen.queryByText("More")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Question" })).not.toBeInTheDocument();
     expect(screen.getByText(/100/)).toBeInTheDocument();
   });
 
@@ -62,37 +59,6 @@ describe("panels", () => {
     rerender(<LiveTranscript partial="listening…" finals={["Hi there"]} />);
     expect(screen.getByText("listening…")).toBeInTheDocument();
     expect(screen.getByText("Hi there")).toBeInTheDocument();
-  });
-});
-
-describe("MeetingNotes", () => {
-  it("filters live notes and clears", () => {
-    const onClear = vi.fn();
-    render(
-      <MeetingNotes
-        entries={[
-          { id: "1", ts: 1_700_000_000_000, speaker: "Interviewer", text: "Tell me about Docker" },
-          { id: "2", ts: 1_700_000_000_100, speaker: "You", text: "I use Kubernetes" },
-        ]}
-        savedMeetings={[]}
-        dbEnabled={false}
-        view="live"
-        setView={() => {}}
-        selectedMeetingId={null}
-        onSelectMeeting={() => {}}
-        onRefreshSaved={() => {}}
-        onExportDocx={() => {}}
-        onClear={onClear}
-        onExport={() => {}}
-        onDeleteSaved={() => {}}
-        currentMeetingId={null}
-      />,
-    );
-    fireEvent.change(screen.getByLabelText("Search notes"), { target: { value: "docker" } });
-    expect(screen.getByText("Tell me about Docker")).toBeInTheDocument();
-    expect(screen.queryByText("I use Kubernetes")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
-    expect(onClear).toHaveBeenCalled();
   });
 });
 

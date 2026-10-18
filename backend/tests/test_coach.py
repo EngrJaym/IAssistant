@@ -189,6 +189,7 @@ def test_user_setup_reaches_system_prompt():
     for needle in ["senior backend engineer", "FastAPI", "5 years Python", "Applying for: Acme Corp", "never override the rule against inventing"]:
         assert needle in sp
     assert "USER INSTRUCTIONS" not in system_prompt(Context())
+    assert "analogy" in system_prompt(Context()).lower()
 
 
 # ---- free provider path, end to end through the real OpenAI SDK against an Ollama-style (OpenAI-compatible) server

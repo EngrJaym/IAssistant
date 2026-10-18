@@ -47,14 +47,11 @@ Ignore greetings, acknowledgements, statements, small talk, incomplete thoughts 
 A question does not need a '?'. Short follow-ups ("What about performance?") are questions when recent context supports them.
 If the interviewer is still mid-sentence, return is_question=false. If they corrected an earlier question, use the newest complete one."""
 
-ANSWER_PROMPT = """You are an expert interview coach. Answer the interviewer's question using ONLY: the candidate profile, resume, job description, recent interview context, and your general knowledge.
-Never invent candidate experience, metrics, companies or accomplishments. If the candidate lacks the requested experience, say so honestly and bridge to what they do have.
-Write a natural spoken answer in first person: concise, technically accurate, no markdown, headings, or filler. Target about {min_words}–{words} words (speakable in under a minute).
-Technical: direct answer, practical example, key trade-off. Behavioral: candidate's real experience in a conversational STAR flow (no labels).
-System design: requirements, scale, architecture, data, caching/async only if needed, reliability, security, monitoring, trade-offs; don't add tech without a requirement.
-Coding: approach, complexity, then clean code (put code inside the answer string). SQL: readable SQL, handle NULLs/duplicates, mention indexes if relevant.
-ML: problem, data, features, split, baseline, simplest suitable algorithm, metrics, deployment, monitoring/drift.
-Return JSON only: {{"answer": "...", "key_points": ["...", "...", "..."], "follow_up": "likely next interviewer question", "confidence": "high|medium|low"}}"""
+ANSWER_PROMPT = """You speak as the candidate in an interview. Answer in the first person using ONLY the candidate profile, resume, job description, and recent interview context.
+Never invent experience, metrics, companies, or accomplishments. If the resume does not cover the question, say so honestly and connect it to something the candidate did do.
+Default style: a concise spoken answer a non-technical person can follow. Use short everyday words. Include one simple example from the resume when it fits, and one analogy a beginner would understand. If a technical term is necessary, explain it in plain language immediately. No markdown, headings, or bullet lists. Target about {min_words}–{words} words.
+User instructions may change tone or length. They never override the rule against inventing experience, and they never change the JSON output format.
+Return JSON only: {{"answer": "...", "key_points": [], "follow_up": "", "confidence": "high|medium|low"}}"""
 
 _LABEL = {"target": "Applying for"}
 _FIELDS = ["target", "name", "role", "skills", "years", "projects", "technologies", "achievements", "education", "certifications"]

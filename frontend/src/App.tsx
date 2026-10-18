@@ -6,15 +6,12 @@ import {
   AnswerPanel,
   CandidateProfile,
   Controls,
-  DialogueEntry,
+  DEFAULT_STYLE,
   Header,
   LiveTranscript,
-  MeetingNotes,
-  QuestionPanel,
-  SavedMeeting,
+  STYLE_PRESETS,
   StatusIndicator,
   TabNav,
-  formatTime,
 } from "./components/components";
 
 const store = {
@@ -34,46 +31,14 @@ const store = {
   },
 };
 
-function loadDialogue(): DialogueEntry[] {
+function loadProfile(): Record<string, string> {
   try {
-    const raw = store.get("coach.dialogue");
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    const parsed = JSON.parse(store.get("coach.profile") || "{}");
+    if (!parsed.instructions?.trim()) parsed.instructions = STYLE_PRESETS[DEFAULT_STYLE];
+    return parsed;
   } catch {
-    return [];
+    return { instructions: STYLE_PRESETS[DEFAULT_STYLE] };
   }
-}
-
-function appendDialogue(entries: DialogueEntry[], text: string, ts: number, speaker: string): DialogueEntry[] {
-  const trimmed = text.trim();
-  if (!trimmed) return entries;
-  const last = entries[entries.length - 1];
-  if (last && last.text === trimmed && Math.abs(last.ts - ts) < 2000) return entries;
-  return [...entries, { id: `${ts}-${Math.random().toString(36).slice(2, 8)}`, ts, speaker, text: trimmed }];
-}
-
-function tagLastAsInterviewer(entries: DialogueEntry[], question: string): DialogueEntry[] {
-  if (!entries.length || !question.trim()) return entries;
-  const q = question.trim().toLowerCase();
-  const next = [...entries];
-  for (let i = next.length - 1; i >= 0; i--) {
-    const line = next[i].text.toLowerCase();
-    if (line.includes(q.slice(0, Math.min(q.length, 40))) || q.includes(line.slice(0, Math.min(line.length, 40)))) {
-      next[i] = { ...next[i], speaker: "Interviewer" };
-      break;
-    }
-  }
-  return next;
-}
-
-function linesFromApi(lines: { speaker: string; text: string; ts: number }[]): DialogueEntry[] {
-  return lines.map((l, i) => ({
-    id: `${l.ts}-${i}`,
-    ts: l.ts,
-    speaker: l.speaker,
-    text: l.text,
-  }));
 }
 
 export default function App() {
@@ -82,23 +47,12 @@ export default function App() {
   const [muted, setMuted] = useState(false);
   const [mode, setMode] = useState("balanced");
   const [dev, setDev] = useState(false);
-  const [tab, setTab] = useState<"session" | "notes" | "setup">("session");
+  const [tab, setTab] = useState<"session" | "setup">("session");
   const [llm, setLlm] = useState("groq");
   const [stt, setStt] = useState("groq");
-  const [dbEnabled, setDbEnabled] = useState(false);
   const [audioSource, setAudioSource] = useState<AudioSource>((store.get("coach.audio") as AudioSource) || "mic");
-  const [dialogue, setDialogue] = useState<DialogueEntry[]>(loadDialogue);
-  const [savedMeetings, setSavedMeetings] = useState<SavedMeeting[]>([]);
-  const [notesView, setNotesView] = useState<"live" | "saved">("live");
-  const [selectedMeetingId, setSelectedMeetingId] = useState<string | null>(null);
   const [meetingId, setMeetingId] = useState<string | null>(null);
-  const [profile, setProfile] = useState<Record<string, string>>(() => {
-    try {
-      return JSON.parse(store.get("coach.profile") || "{}");
-    } catch {
-      return {};
-    }
-  });
+  const [profile, setProfile] = useState<Record<string, string>>(loadProfile);
   const [auth, setAuth] = useState<AuthState>({
     enabled: false,
     required: false,
@@ -112,49 +66,6 @@ export default function App() {
   live.current = { profile, mode, muted, llm, stt, meetingId };
   const coach = useRef<Coach>();
   const stopMic = useRef<() => void>();
-  const dialogueRef = useRef(dialogue);
-  dialogueRef.current = dialogue;
-
-  const persistDialogue = useCallback((entries: DialogueEntry[]) => {
-    dialogueRef.current = entries;
-    setDialogue(entries);
-    store.set("coach.dialogue", JSON.stringify(entries));
-  }, []);
-
-  const refreshSavedMeetings = useCallback(async () => {
-    if (!dbEnabled) return;
-    if (auth.required && !auth.user) return;
-    try {
-      const r = await apiFetch("/api/meetings");
-      if (r.status === 401) return;
-      if (!r.ok) return;
-      const j = await r.json();
-      setSavedMeetings(j.meetings || []);
-    } catch {
-      /* ignore */
-    }
-  }, [dbEnabled, auth.required, auth.user]);
-
-  const loadSavedMeeting = useCallback(async (id: string) => {
-    try {
-      const r = await apiFetch(`/api/meetings/${id}`);
-      if (!r.ok) return;
-      const j = await r.json();
-      persistDialogue(linesFromApi(j.lines || []));
-      setSelectedMeetingId(id);
-      setNotesView("saved");
-    } catch {
-      /* ignore */
-    }
-  }, [persistDialogue]);
-
-  const recordLine = useCallback(
-    (text: string, ts?: number, speaker = "Interviewer") => {
-      const next = appendDialogue(dialogueRef.current, text, ts ?? Date.now(), speaker);
-      if (next !== dialogueRef.current) persistDialogue(next);
-    },
-    [persistDialogue],
-  );
 
   useEffect(() => {
     store.set("coach.profile", JSON.stringify(profile));
@@ -174,7 +85,11 @@ export default function App() {
       const a = await fetchAuthMe();
       setAuth(a);
       if (a.user && a.profile && Object.keys(a.profile).length) {
-        setProfile((prev) => ({ ...prev, ...a.profile }));
+        setProfile((prev) => {
+          const next = { ...prev, ...a.profile };
+          if (!next.instructions?.trim()) next.instructions = STYLE_PRESETS[DEFAULT_STYLE];
+          return next;
+        });
       }
     } catch {
       /* ignore */
@@ -185,7 +100,6 @@ export default function App() {
     apiFetch("/api/health")
       .then((r) => r.json())
       .then((h) => {
-        setDbEnabled(!!h.database);
         if (h.defaults) {
           setLlm(h.defaults.llm);
           setStt(h.defaults.stt);
@@ -199,10 +113,6 @@ export default function App() {
       window.history.replaceState({}, "", window.location.pathname);
     }
   }, [loadAuth]);
-
-  useEffect(() => {
-    if (tab === "notes" && dbEnabled) refreshSavedMeetings();
-  }, [tab, dbEnabled, refreshSavedMeetings]);
 
   useEffect(() => {
     if (!running) return;
@@ -219,31 +129,12 @@ export default function App() {
     return () => clearTimeout(t);
   }, [profile, mode, running, meetingId]);
 
-  const onEvent = useCallback(
-    (e: Ev) => {
-      if (e.type === "transcript_final") {
-        recordLine(e.text, typeof e.ts === "number" ? e.ts : Date.now(), e.speaker || "Interviewer");
-      }
-      if (e.type === "transcript_skipped" && e.speaker) {
-        const entries = dialogueRef.current;
-        const last = entries[entries.length - 1];
-        if (last && last.text === e.text) {
-          persistDialogue([...entries.slice(0, -1), { ...last, speaker: e.speaker }]);
-        }
-      }
-      if (e.type === "question_detected") {
-        persistDialogue(tagLastAsInterviewer(dialogueRef.current, e.question));
-      }
-      dispatch(e);
-    },
-    [recordLine, persistDialogue],
-  );
+  const onEvent = useCallback((e: Ev) => {
+    dispatch(e);
+  }, []);
 
   async function start() {
     dispatch({ type: "clear" });
-    persistDialogue([]);
-    setNotesView("live");
-    setSelectedMeetingId(null);
     setTab("session");
     try {
       const r = await apiFetch("/api/session/start", {
@@ -302,7 +193,6 @@ export default function App() {
     setRunning(false);
     setMeetingId(null);
     dispatch({ type: "status", status: "READY" });
-    refreshSavedMeetings();
   }
 
   const toggleMute = () => {
@@ -316,48 +206,6 @@ export default function App() {
     dispatch({ type: "clear" });
   };
 
-  const exportNotes = (format: "txt" | "md") => {
-    const lines = dialogue.map((e) =>
-      format === "md" ? `**${e.speaker}** (${formatTime(e.ts)}): ${e.text}` : `[${formatTime(e.ts)}] ${e.speaker}: ${e.text}`,
-    );
-    const body = format === "md" ? `# Meeting dialogue\n\n${lines.join("\n\n")}\n` : lines.join("\n") + "\n";
-    const blob = new Blob([body], { type: "text/plain;charset=utf-8" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `meeting-notes-${new Date().toISOString().slice(0, 10)}.${format === "md" ? "md" : "txt"}`;
-    a.click();
-    URL.revokeObjectURL(a.href);
-  };
-
-  const exportDocx = async (id: string) => {
-    const r = await apiFetch(`/api/meetings/${id}/export.docx`);
-    if (!r.ok) return;
-    const blob = await r.blob();
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `meeting-dialogue-${id.slice(0, 8)}.docx`;
-    a.click();
-    URL.revokeObjectURL(a.href);
-  };
-
-  const deleteSaved = async (id: string) => {
-    await apiFetch(`/api/meetings/${id}`, { method: "DELETE" });
-    if (selectedMeetingId === id) {
-      setSelectedMeetingId(null);
-      persistDialogue([]);
-    }
-    refreshSavedMeetings();
-  };
-
-  const clearNotes = () => {
-    if (!confirm("Clear the dialogue shown in this view? (Saved meetings on the server are not deleted.)")) return;
-    persistDialogue([]);
-  };
-
-  const onNotesViewChange = (v: "live" | "saved") => {
-    setNotesView(v);
-  };
-
   useEffect(() => () => {
     stopMic.current?.();
     coach.current?.stop();
@@ -369,7 +217,6 @@ export default function App() {
   const handleLogout = async () => {
     await logout();
     setAuth((a) => ({ ...a, user: null }));
-    setSavedMeetings([]);
   };
 
   return (
@@ -392,28 +239,9 @@ export default function App() {
             <StatusIndicator status={status} hint={running && muted ? "Muted" : undefined} />
           </div>
           {s.error && <div className="alert-error">{s.error}</div>}
-          <AnswerPanel answer={s.answer} points={s.points} followUp={s.followUp} metrics={s.metrics} dev={dev} />
-          <QuestionPanel question={s.question} possible={s.possible} />
+          <AnswerPanel answer={s.answer} metrics={s.metrics} dev={dev} />
           <LiveTranscript partial={s.partial} finals={s.finals} />
         </div>
-      )}
-
-      {tab === "notes" && (
-        <MeetingNotes
-          entries={dialogue}
-          savedMeetings={savedMeetings}
-          dbEnabled={dbEnabled}
-          view={notesView}
-          setView={onNotesViewChange}
-          selectedMeetingId={selectedMeetingId}
-          onSelectMeeting={(id) => id && loadSavedMeeting(id)}
-          onRefreshSaved={refreshSavedMeetings}
-          onExportDocx={exportDocx}
-          onClear={clearNotes}
-          onExport={exportNotes}
-          onDeleteSaved={deleteSaved}
-          currentMeetingId={meetingId}
-        />
       )}
 
       {tab === "setup" && (
