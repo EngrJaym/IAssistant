@@ -101,6 +101,50 @@ body {
   margin: 0 auto;
   padding: 0 16px calc(var(--bar-h) + var(--nav-h) + 20px);
 }
+.app.login-app {
+  justify-content: center;
+  padding-bottom: 32px;
+}
+.login-card {
+  width: 100%;
+  max-width: 24rem;
+  margin: 12px auto 0;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+.login-card h2 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+.login-lead {
+  margin: 6px 0 16px;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+.login-card .alert-error { margin-bottom: 12px; }
+.login-oauth { width: 100%; margin-bottom: 0; }
+.login-oauth + .login-oauth { margin-top: 8px; }
+.login-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 16px 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.login-divider::before,
+.login-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+.login-submit { margin-top: 16px; }
 .brand {
   margin: 0;
   display: flex;
@@ -562,6 +606,8 @@ textarea,
 select,
 input[type="text"],
 input[type="search"],
+input[type="email"],
+input[type="password"],
 input[type="file"] {
   width: 100%;
   margin-top: 6px;

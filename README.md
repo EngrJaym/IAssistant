@@ -101,16 +101,16 @@ cd backend && python -m pytest -q
 
 Covers question detection, chunk merge, hands-free gating, duplicates, cancellation, WebSocket, provider resolution, and mocked paid APIs.
 
-## Accounts (OAuth)
+## Accounts
 
-When `SESSION_SECRET` and at least one OAuth client are set (Google and/or GitHub), users must sign in to start sessions. Meetings and assistant setup are stored per user in **server memory** (until restart).
+The app opens on a login page until someone is signed in. There is no sign-up. Google can prove an identity, and `ALLOWED_EMAILS` decides whether that person may use IAssistant. An empty list allows nobody. Email and password accounts are also provisioned in `AUTH_PASSWORDS` (`email:password`, separated by semicolons or new lines) and must appear on the allowlist. Meetings and assistant setup are stored per user in **server memory** (until restart).
 
-1. Create OAuth credentials (Google Cloud Console or GitHub Developer Settings).
-2. Set authorized redirect URI to `{APP_BASE_URL}/api/auth/callback/google` (or `/github`).
-3. Add to `.env`: `SESSION_SECRET` (random 32+ bytes), `APP_BASE_URL`, client ID/secret.
-4. Restart backend; use **Sign in** in the header, **Log out** to end the session cookie.
+1. Add `ALLOWED_EMAILS=you@gmail.com` and, for password sign-in, `AUTH_PASSWORDS=you@gmail.com:a-long-password`.
+2. For Google, create OAuth credentials and set the redirect URI to `{APP_BASE_URL}/api/auth/callback/google`.
+3. Add `SESSION_SECRET` (random 32+ bytes), `APP_BASE_URL`, and the Google client id and secret.
+4. Restart the backend. A saved session stays until **Log out**. A verified Google account that is not on the list is not signed in.
 
-Without OAuth configured, behavior is unchanged: optional anonymous meetings (`user_id` null) and setup in localStorage only.
+Set `AUTH_REQUIRED=false` only if you need the older anonymous mode for local API tests.
 
 ## Privacy
 

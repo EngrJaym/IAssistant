@@ -30,6 +30,12 @@ GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "").strip()
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
 GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID", "").strip()
 GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET", "").strip()
+# Comma-separated. Google proves the address; only these addresses may use the app.
+ALLOWED_EMAILS = os.getenv("ALLOWED_EMAILS", "").strip()
+# Provisioned accounts only: email:password pairs separated by newlines or semicolons.
+AUTH_PASSWORDS = os.getenv("AUTH_PASSWORDS", "").strip()
+# The login page is required unless this is explicitly turned off.
+AUTH_REQUIRED = os.getenv("AUTH_REQUIRED", "true").lower() in ("1", "true", "yes")
 HANDS_FREE = os.getenv("HANDS_FREE", "true").lower() in ("1", "true", "yes")
 GROQ_CHUNK_SECONDS = float(os.getenv("GROQ_CHUNK_SECONDS", "4"))
 GROQ_CHUNK_OVERLAP_MS = int(os.getenv("GROQ_CHUNK_OVERLAP_MS", "450"))

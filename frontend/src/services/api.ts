@@ -33,6 +33,17 @@ export function loginUrl(provider: string): string {
   return `/api/auth/login/${provider}`;
 }
 
+export async function loginWithPassword(email: string, password: string): Promise<string | null> {
+  const r = await apiFetch("/api/auth/login/password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  if (r.ok) return null;
+  const body = await r.json().catch(() => ({}));
+  return typeof body.error === "string" ? body.error : "Invalid email or password.";
+}
+
 export async function saveProfile(profile: Record<string, string>): Promise<void> {
   const r = await apiFetch("/api/profile", {
     method: "PUT",

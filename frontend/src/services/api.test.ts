@@ -1,5 +1,5 @@
 ﻿import { afterEach, describe, expect, it, vi } from "vitest";
-import { apiFetch, fetchAuthMe, loginUrl, logout, saveProfile } from "./api";
+import { apiFetch, fetchAuthMe, loginUrl, loginWithPassword, logout, saveProfile } from "./api";
 
 describe("api", () => {
   afterEach(() => {
@@ -24,6 +24,14 @@ describe("api", () => {
 
   it("loginUrl builds provider path", () => {
     expect(loginUrl("google")).toBe("/api/auth/login/google");
+  });
+
+  it("loginWithPassword returns the server error", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: "Invalid email or password." }), { status: 401 })),
+    );
+    await expect(loginWithPassword("a@b.com", "nope")).resolves.toBe("Invalid email or password.");
   });
 
   it("logout posts to logout endpoint", async () => {

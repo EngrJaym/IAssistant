@@ -81,6 +81,7 @@ async def _google_user(code: str) -> dict[str, Any]:
         "provider": "google",
         "sub": str(sub),
         "email": email,
+        "email_verified": data.get("email_verified") is True,
         "name": data.get("name"),
         "picture": data.get("picture"),
     }

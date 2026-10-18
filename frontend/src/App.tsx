@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
-import { apiFetch, fetchAuthMe, logout, saveProfile, type AuthState } from "./services/api";
+import { apiFetch, fetchAuthMe, loginWithPassword, logout, saveProfile, type AuthState } from "./services/api";
 import { initialSessionState, reduceSessionState } from "./sessionState";
 import { Coach, Ev, startAudioCapture, startBrowserSTT, type AudioSource } from "./services/websocket";
 import {
@@ -9,6 +9,7 @@ import {
   DEFAULT_STYLE,
   Header,
   LiveTranscript,
+  LoginPage,
   STYLE_PRESETS,
   StatusIndicator,
   TabNav,
@@ -55,11 +56,13 @@ export default function App() {
   const [profile, setProfile] = useState<Record<string, string>>(loadProfile);
   const [auth, setAuth] = useState<AuthState>({
     enabled: false,
-    required: false,
+    required: true,
     providers: [],
     user: null,
     profile: {},
   });
+  const [authChecked, setAuthChecked] = useState(false);
+  const [loginError, setLoginError] = useState("");
   const profileSyncRef = useRef<ReturnType<typeof setTimeout>>();
 
   const live = useRef({ profile, mode, muted, llm, stt, meetingId });
@@ -92,7 +95,9 @@ export default function App() {
         });
       }
     } catch {
-      /* ignore */
+      setAuth((a) => ({ ...a, user: null }));
+    } finally {
+      setAuthChecked(true);
     }
   }, []);
 
@@ -108,8 +113,17 @@ export default function App() {
       .catch(() => {});
     loadAuth();
     const params = new URLSearchParams(window.location.search);
-    if (params.get("auth_error")) {
-      dispatch({ type: "error", message: "Sign-in failed. Check OAuth redirect URLs and try again." });
+    const authError = params.get("auth_error");
+    if (authError) {
+      const messages: Record<string, string> = {
+        not_allowed: "This account is signed in with Google, but it is not on the allowlist.",
+        unverified_email: "Google has not verified this email address.",
+        allowlist_empty: "Sign-in is closed until ALLOWED_EMAILS is set on the server.",
+        invalid_state: "Sign-in expired. Try again.",
+        oauth_failed: "Sign-in failed. Check the OAuth redirect URL and try again.",
+        provider_unconfigured: "Google sign-in is not configured on the server.",
+      };
+      setLoginError(messages[authError] || "Sign-in failed. Check OAuth redirect URLs and try again.");
       window.history.replaceState({}, "", window.location.pathname);
     }
   }, [loadAuth]);
@@ -217,7 +231,30 @@ export default function App() {
   const handleLogout = async () => {
     await logout();
     setAuth((a) => ({ ...a, user: null }));
+    setLoginError("");
   };
+
+  const handlePasswordLogin = async (email: string, password: string) => {
+    const message = await loginWithPassword(email, password);
+    if (!message) {
+      setLoginError("");
+      await loadAuth();
+    }
+    return message;
+  };
+
+  if (!auth.user) {
+    return (
+      <div className="app login-app">
+        <Header />
+        {authChecked ? (
+          <LoginPage providers={auth.providers} error={loginError} onPasswordLogin={handlePasswordLogin} />
+        ) : (
+          <p className="login-lead">Checking sign-in…</p>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="app">
@@ -230,7 +267,6 @@ export default function App() {
           onLogout: handleLogout,
         }}
       />
-      {auth.required && !auth.user && <p className="banner-signin">Sign in to start.</p>}
       <TabNav tab={tab} setTab={setTab} />
 
       {tab === "session" && (

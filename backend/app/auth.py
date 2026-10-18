@@ -1,8 +1,13 @@
-"""Signed session cookies and OAuth user resolution."""
+"""Signed session cookies and OAuth user resolution.
+
+Google (or GitHub) proves who the account is. ALLOWED_EMAILS is the separate
+decision of whether that person may use IAssistant.
+"""
 from __future__ import annotations
 
+import hmac
+import re
 import secrets
-import uuid
 from dataclasses import dataclass
 from typing import Any
 
@@ -30,8 +35,74 @@ def oauth_enabled() -> bool:
 
 
 def required() -> bool:
-    """When OAuth is configured, protected resources need a signed-in user."""
-    return oauth_enabled()
+    """Protected resources need a signed-in user unless AUTH_REQUIRED is turned off."""
+    return config.AUTH_REQUIRED
+
+
+class AllowlistError(Exception):
+    def __init__(self, code: str):
+        self.code = code
+        super().__init__(code)
+
+
+def allowed_email_set() -> frozenset[str]:
+    parts = re.split(r"[,;\s]+", config.ALLOWED_EMAILS or "")
+    return frozenset(part.strip().lower() for part in parts if "@" in part)
+
+
+def email_allowed(email: str | None) -> bool:
+    normalized = (email or "").strip().lower()
+    allowed = allowed_email_set()
+    return bool(normalized) and normalized in allowed
+
+
+def check_allowed(email: str | None, *, provider: str, email_verified: bool | None) -> None:
+    """Reject before a session is created. Empty allowlist allows nobody."""
+    if not allowed_email_set():
+        raise AllowlistError("allowlist_empty")
+    if provider == "google" and email_verified is not True:
+        raise AllowlistError("unverified_email")
+    if not email_allowed(email):
+        raise AllowlistError("not_allowed")
+
+
+def password_accounts() -> dict[str, str]:
+    """Approved email/password pairs. There is no sign-up; unknown addresses are rejected."""
+    out: dict[str, str] = {}
+    for part in re.split(r"[\n;]+", config.AUTH_PASSWORDS or ""):
+        part = part.strip()
+        if ":" not in part:
+            continue
+        email, password = part.split(":", 1)
+        email = email.strip().lower()
+        password = password.strip()
+        if "@" in email and password:
+            out[email] = password
+    return out
+
+
+def authenticate_password(email: str, password: str) -> str:
+    """Return a user id for a provisioned account, or raise AllowlistError."""
+    if not allowed_email_set():
+        raise AllowlistError("allowlist_empty")
+    normalized = (email or "").strip().lower()
+    expected = password_accounts().get(normalized)
+    given = password or ""
+    probe = expected if expected else "invalid-password-placeholder"
+    matched = hmac.compare_digest(probe.encode("utf-8"), given.encode("utf-8"))
+    if not expected or not matched or not email_allowed(normalized):
+        raise AllowlistError("invalid_credentials")
+    return upsert_oauth_user("password", normalized, normalized, None, None)
+
+
+def _admit(user: User | None) -> User | None:
+    if not user:
+        return None
+    if allowed_email_set():
+        return user if email_allowed(user.email) else None
+    if required():
+        return None
+    return user
 
 
 def providers() -> list[str]:
@@ -68,7 +139,7 @@ def user_from_request(request: Request) -> User | None:
     if not uid:
         return None
     row = db.get_user(uid)
-    return _row_to_user(row) if row else None
+    return _admit(_row_to_user(row) if row else None)
 
 
 def session_from_scope(scope) -> dict:
@@ -105,7 +176,7 @@ def user_from_ws(ws: WebSocket) -> User | None:
     if not uid:
         return None
     row = db.get_user(str(uid))
-    return _row_to_user(row) if row else None
+    return _admit(_row_to_user(row) if row else None)
 
 
 def require_user(request: Request) -> User:

@@ -21,6 +21,12 @@ def isolate_memory_db():
     db.reset_memory()
 
 
+@pytest.fixture(autouse=True)
+def login_optional_unless_a_test_turns_it_on(monkeypatch):
+    """Existing API tests start sessions without an account. Production defaults to required."""
+    monkeypatch.setattr(config, "AUTH_REQUIRED", False)
+
+
 @pytest.fixture
 def groq_configured(monkeypatch):
     monkeypatch.setattr(config, "GROQ_API_KEY", "test-groq-key")

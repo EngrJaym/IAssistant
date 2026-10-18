@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { validateResumeFile } from "../lib/resumeFile";
 import { BrandLogo } from "./BrandLogo";
 import { ThemeToggle } from "./ThemeToggle";
@@ -58,25 +58,94 @@ export function Header({ auth }: { auth?: AuthBarProps }) {
         </h1>
         <div className="auth-bar">
           <ThemeToggle />
-          {auth?.enabled && (
+          {auth?.user && (
             <>
-              {auth.user ? (
-                <>
-                  {auth.user.picture && <img className="auth-avatar" src={auth.user.picture} alt="" />}
-                  <button type="button" className="btn btn-sm btn-ghost" onClick={auth.onLogout}>Log out</button>
-                </>
-              ) : (
-                auth.providers.map((p) => (
-                  <a key={p} className="btn btn-sm" href={`/api/auth/login/${p}`}>
-                    Sign in
-                  </a>
-                ))
-              )}
+              {auth.user.picture && <img className="auth-avatar" src={auth.user.picture} alt="" />}
+              <button type="button" className="btn btn-sm btn-ghost" onClick={auth.onLogout}>Log out</button>
             </>
           )}
         </div>
       </div>
     </header>
+  );
+}
+
+const OAUTH_LABEL: Record<string, string> = { google: "Google", github: "GitHub" };
+
+export function LoginPage({
+  providers,
+  error,
+  onPasswordLogin,
+}: {
+  providers: string[];
+  error?: string;
+  onPasswordLogin: (email: string, password: string) => Promise<string | null>;
+}) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [localError, setLocalError] = useState("");
+  const remoteError =
+    error && error.includes("not configured on the server") && providers.length === 0 ? "" : error || "";
+  const shown = localError || remoteError;
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setLocalError("");
+    try {
+      const message = await onPasswordLogin(email, password);
+      if (message) setLocalError(message);
+    } catch {
+      setLocalError("Could not sign in. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="login-card" aria-label="Sign in">
+      <h2>Sign in</h2>
+      <p className="login-lead">Approved accounts only.</p>
+      {shown && (
+        <div className="alert-error" role="alert">
+          {shown}
+        </div>
+      )}
+      {providers.map((p) => (
+        <a key={p} className="btn btn-block login-oauth" href={`/api/auth/login/${p}`}>
+          Continue with {OAUTH_LABEL[p] ?? p}
+        </a>
+      ))}
+      {providers.length > 0 && <div className="login-divider">or</div>}
+      <form onSubmit={submit}>
+        <label className="field">
+          Email
+          <input
+            type="email"
+            name="email"
+            autoComplete="username"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+        </label>
+        <label className="field">
+          Password
+          <input
+            type="password"
+            name="password"
+            autoComplete="current-password"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+        </label>
+        <button type="submit" className="btn btn-primary btn-block login-submit" disabled={busy}>
+          {busy ? "Signing in…" : "Sign in"}
+        </button>
+      </form>
+    </section>
   );
 }
 

@@ -5,6 +5,7 @@ import {
   Controls,
   Header,
   LiveTranscript,
+  LoginPage,
   StatusIndicator,
   TabNav,
   formatTime,
@@ -63,7 +64,7 @@ describe("panels", () => {
 });
 
 describe("Header", () => {
-  it("shows sign-in when OAuth enabled", () => {
+  it("keeps sign-in off the coach header", () => {
     render(
       <Header
         auth={{
@@ -75,7 +76,8 @@ describe("Header", () => {
         }}
       />,
     );
-    expect(screen.getByRole("link", { name: /Sign in/i })).toHaveAttribute("href", "/api/auth/login/google");
+    expect(screen.queryByRole("link", { name: /sign in/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /sign up/i })).not.toBeInTheDocument();
   });
 
   it("shows a theme switch and the logo", () => {
@@ -85,6 +87,28 @@ describe("Header", () => {
     const before = theme.getAttribute("aria-checked");
     fireEvent.click(theme);
     expect(theme.getAttribute("aria-checked")).not.toBe(before);
+  });
+});
+
+describe("LoginPage", () => {
+  it("offers Google or email and password, and no sign-up", async () => {
+    const onPasswordLogin = vi.fn().mockResolvedValue("Invalid email or password.");
+    render(<LoginPage providers={["google"]} onPasswordLogin={onPasswordLogin} />);
+    expect(screen.getByRole("link", { name: /continue with google/i })).toHaveAttribute("href", "/api/auth/login/google");
+    expect(screen.queryByRole("link", { name: /sign up/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/create account/i)).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "coach@example.com" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "secret" } });
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Invalid email or password.");
+    expect(onPasswordLogin).toHaveBeenCalledWith("coach@example.com", "secret");
+  });
+
+  it("hides Google when OAuth is not configured", () => {
+    render(<LoginPage providers={[]} error="Google sign-in is not configured on the server." onPasswordLogin={vi.fn()} />);
+    expect(screen.queryByRole("link", { name: /continue with google/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Email")).toBeInTheDocument();
   });
 });
 

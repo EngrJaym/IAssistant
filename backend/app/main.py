@@ -148,10 +148,30 @@ def auth_me(request: Request):
     }
 
 
+class PasswordLoginReq(BaseModel):
+    email: str = ""
+    password: str = ""
+
+
+@app.post("/api/auth/login/password")
+def auth_login_password(request: Request, req: PasswordLoginReq):
+    try:
+        uid = auth.authenticate_password(req.email, req.password)
+    except auth.AllowlistError as ex:
+        messages = {
+            "allowlist_empty": "Sign-in is closed until ALLOWED_EMAILS is set on the server.",
+            "invalid_credentials": "Invalid email or password.",
+        }
+        return JSONResponse({"error": messages.get(ex.code, "Invalid email or password.")}, status_code=401)
+    auth.login_user(request, uid)
+    user = auth.user_from_request(request)
+    return {"ok": True, "user": auth.public_user(user) if user else None}
+
+
 @app.get("/api/auth/login/{provider}")
 def auth_login(provider: str, request: Request):
     if provider not in auth.providers():
-        return JSONResponse({"error": "OAuth provider not configured."}, status_code=404)
+        return RedirectResponse(f"{config.APP_BASE_URL}/?auth_error=provider_unconfigured")
     state = auth.new_oauth_state()
     request.session["oauth_state"] = state
     return RedirectResponse(oauth_providers.authorize_url(provider, state))
@@ -168,9 +188,12 @@ async def auth_callback(provider: str, request: Request, code: str | None = None
         return RedirectResponse(f"{config.APP_BASE_URL}/?auth_error=invalid_state")
     try:
         info = await oauth_providers.exchange_code(provider, code)
+        auth.check_allowed(info.get("email"), provider=info["provider"], email_verified=info.get("email_verified"))
         uid = auth.upsert_oauth_user(info["provider"], info["sub"], info["email"], info.get("name"), info.get("picture"))
         auth.login_user(request, uid)
-    except Exception as ex:
+    except auth.AllowlistError as ex:
+        return RedirectResponse(f"{config.APP_BASE_URL}/?auth_error={ex.code}")
+    except Exception:
         return RedirectResponse(f"{config.APP_BASE_URL}/?auth_error=oauth_failed")
     return RedirectResponse(f"{config.APP_BASE_URL}/")
 
