@@ -1,13 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import {
-  DEFAULT_POPUP_LOOK,
-  POPUP_LOOK_KEY,
-  normalizePopupLook,
-  popupLookVars,
-  readPopupLook,
-  type PopupLook,
-} from "../lib/popupLook";
+import { popupLookVars } from "../lib/popupLook";
 import { THEME_EVENT, loadTheme, type Theme } from "../services/theme";
 import { Controls, StatusIndicator } from "./components";
 import { ThemeToggle } from "./ThemeToggle";
@@ -146,25 +139,9 @@ export function subscribeCoachPopup(onChange: (state: CoachPopupState) => void) 
   };
 }
 
-function loadLook(): PopupLook {
-  try {
-    return readPopupLook(localStorage.getItem(POPUP_LOOK_KEY));
-  } catch {
-    return DEFAULT_POPUP_LOOK;
-  }
-}
-
-function saveLook(look: PopupLook) {
-  try {
-    localStorage.setItem(POPUP_LOOK_KEY, JSON.stringify(look));
-  } catch {
-    /* storage unavailable */
-  }
-}
-
-export function CoachPopupCard({ state, look }: { state: CoachPopupState; look: PopupLook }) {
+export function CoachPopupCard({ state }: { state: CoachPopupState }) {
   return (
-    <section className={`coach-popup-card is-${look.layout} is-${look.align}`} aria-label="Meeting coach">
+    <section className="coach-popup-card is-comfortable is-left" aria-label="Meeting coach">
       <div className="coach-popup-bar">
         <strong>IAssistant</strong>
         <div className="coach-popup-tools">
@@ -186,62 +163,6 @@ export function CoachPopupCard({ state, look }: { state: CoachPopupState; look: 
   );
 }
 
-function PopupLookSettings({ look, setLook }: { look: PopupLook; setLook: (look: PopupLook) => void }) {
-  const set = (patch: Partial<PopupLook>) => setLook(normalizePopupLook({ ...look, ...patch }));
-  return (
-    <details className="popup-look">
-      <summary>Window</summary>
-      <div className="popup-look-grid">
-        <label>
-          Layout
-          <select value={look.layout} onChange={(e) => set({ layout: e.target.value as PopupLook["layout"] })}>
-            <option value="compact">Compact</option>
-            <option value="comfortable">Comfortable</option>
-            <option value="roomy">Roomy</option>
-          </select>
-        </label>
-        <label>
-          Align
-          <select value={look.align} onChange={(e) => set({ align: e.target.value as PopupLook["align"] })}>
-            <option value="left">Left</option>
-            <option value="center">Center</option>
-          </select>
-        </label>
-        <label>
-          Font
-          <select value={look.font} onChange={(e) => set({ font: e.target.value as PopupLook["font"] })}>
-            <option value="system">System</option>
-            <option value="serif">Serif</option>
-            <option value="mono">Mono</option>
-          </select>
-        </label>
-        <label>
-          Text size
-          <input
-            type="range"
-            min={14}
-            max={24}
-            value={look.fontSize}
-            aria-label="Text size"
-            onChange={(e) => set({ fontSize: Number(e.target.value) })}
-          />
-        </label>
-        <label>
-          Transparency
-          <input
-            type="range"
-            min={8}
-            max={92}
-            value={Math.round((1 - look.opacity) * 100)}
-            aria-label="Transparency"
-            onChange={(e) => set({ opacity: 1 - Number(e.target.value) / 100 })}
-          />
-        </label>
-      </div>
-    </details>
-  );
-}
-
 function paintTheme(root: HTMLElement, theme: Theme) {
   root.setAttribute("data-theme", theme);
   root.style.colorScheme = theme;
@@ -250,7 +171,6 @@ function paintTheme(root: HTMLElement, theme: Theme) {
 
 function PopupApp() {
   const [state, setState] = useState<CoachPopupState>(latest);
-  const [look, setLook] = useState<PopupLook>(loadLook);
   const [theme, setTheme] = useState<Theme>(loadTheme);
   const frame = useRef<HTMLDivElement>(null);
   useEffect(() => subscribeCoachPopup(setState), []);
@@ -286,13 +206,9 @@ function PopupApp() {
       bye();
     };
   }, []);
-  useEffect(() => {
-    saveLook(look);
-  }, [look]);
   return (
-    <div ref={frame} className="coach-popup-app" style={popupLookVars(look) as CSSProperties}>
-      <CoachPopupCard state={state} look={look} />
-      <PopupLookSettings look={look} setLook={setLook} />
+    <div ref={frame} className="coach-popup-app" style={popupLookVars() as CSSProperties}>
+      <CoachPopupCard state={state} />
     </div>
   );
 }

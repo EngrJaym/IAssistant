@@ -935,7 +935,6 @@ body.coach-popup {
   }
 }
 .coach-popup-app {
-  --popup-opacity: 0.42;
   --popup-font: "Segoe UI", system-ui, sans-serif;
   --popup-size: 17px;
   --popup-pad: 16px;
@@ -951,12 +950,11 @@ body.coach-popup {
   overflow: auto;
   border-radius: 16px;
   padding: var(--popup-pad);
-  color: var(--fg);
+  color: color-mix(in srgb, var(--fg) 48%, transparent);
   text-align: var(--popup-align);
-  background: color-mix(in srgb, var(--surface) calc(var(--popup-opacity) * 100%), transparent);
-  border: 1px solid color-mix(in srgb, var(--fg) 18%, transparent);
-  backdrop-filter: blur(18px);
-  box-shadow: 0 10px 28px color-mix(in srgb, #000 16%, transparent);
+  background: color-mix(in srgb, var(--surface) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--fg) 10%, transparent);
+  box-shadow: none;
 }
 .coach-popup-tools {
   display: flex;
@@ -979,9 +977,15 @@ html.coach-popup .control-bar {
   transform: none;
   margin-top: 8px;
   padding: 6px 0 0;
+  border: 0;
   border-radius: 12px;
   background: transparent;
   backdrop-filter: none;
+}
+html.coach-popup .status-pill,
+html.coach-popup .theme-switch {
+  background: transparent;
+  box-shadow: none;
 }
 .coach-popup-card.is-center .coach-popup-bar {
   justify-content: center;
@@ -995,42 +999,12 @@ html.coach-popup .control-bar {
 }
 .coach-popup-answer {
   margin: 0;
+  color: color-mix(in srgb, var(--fg) 72%, transparent);
   font-size: var(--popup-size);
+  font-weight: 600;
   line-height: var(--popup-leading);
   white-space: pre-wrap;
-}
-.popup-look {
-  margin-top: 8px;
-  color: var(--fg);
-  font-size: 0.75rem;
-}
-.popup-look summary {
-  cursor: pointer;
-  width: fit-content;
-  padding: 4px 8px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--surface) 55%, transparent);
-}
-.popup-look-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  margin-top: 8px;
-  padding: 10px;
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--surface) 72%, transparent);
-}
-.popup-look-grid label {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.popup-look-grid select,
-.popup-look-grid input[type="range"] {
-  width: 100%;
-  margin: 0;
-  background: rgba(255, 255, 255, 0.08);
-  color: inherit;
+  text-shadow: 0 1px 2px color-mix(in srgb, var(--bg) 55%, transparent);
 }
 .hold-app {
   min-height: 100dvh;
