@@ -593,14 +593,16 @@ details.setup > summary {
 }
 details.setup > summary::-webkit-details-marker { display: none; }
 
-label.field {
+label.field,
+div.field {
   display: block;
   font-size: 0.8125rem;
   font-weight: 500;
   color: var(--muted);
   margin-top: 12px;
 }
-label.field:first-child { margin-top: 0; }
+label.field:first-child,
+div.field:first-child { margin-top: 0; }
 
 textarea,
 select,
@@ -783,6 +785,127 @@ input:focus {
   margin-top: 12px;
   padding-top: 12px;
   border-top: 1px solid var(--line);
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--fg);
+  cursor: pointer;
+  box-shadow: var(--shadow);
+}
+.popup-icon {
+  width: 20px;
+  height: 20px;
+  display: block;
+}
+.password-wrap {
+  position: relative;
+  display: block;
+}
+.password-wrap input {
+  padding-right: 64px;
+}
+.password-toggle {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 4px 6px;
+}
+.template-editor {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.template-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.template-head h3 {
+  margin: 0;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.template-lead {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+.template-card {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+.template-card input,
+.template-card textarea {
+  background: var(--surface);
+}
+.template-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+html.coach-popup,
+html.coach-popup body,
+body.coach-popup {
+  background: transparent !important;
+  margin: 0;
+  min-height: 100%;
+}
+.coach-popup-app {
+  min-height: 100vh;
+  padding: 10px;
+  background: transparent;
+}
+.coach-popup-card {
+  min-height: calc(100vh - 20px);
+  overflow: auto;
+  border-radius: 16px;
+  padding: 14px;
+  color: #f4f7fb;
+  background: rgba(20, 24, 32, 0.58);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.28);
+}
+.coach-popup-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.coach-popup-answer {
+  margin: 0;
+  font-size: 1.05rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+.coach-popup-partial {
+  margin: 10px 0 0;
+  color: rgba(244, 247, 251, 0.72);
+  font-size: 0.875rem;
 }
 
 @media (min-width: 768px) {

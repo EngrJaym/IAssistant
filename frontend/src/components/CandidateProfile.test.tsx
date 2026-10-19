@@ -10,22 +10,50 @@ describe("CandidateProfile", () => {
         setProfile={() => {}}
       />,
     );
-    expect(screen.getByLabelText("Style")).toHaveValue("Plain");
-    expect(screen.getByPlaceholderText("How to answer (optional)")).toHaveValue(STYLE_PRESETS.Plain);
-    expect(STYLE_PRESETS.Plain).toMatch(/analogy/i);
-    expect(STYLE_PRESETS.Plain).toMatch(/resume/i);
-    expect(STYLE_PRESETS.Plain).toMatch(/even when it is not on my resume/i);
-    expect(STYLE_PRESETS.Plain).not.toMatch(/using only my resume/i);
+    expect(screen.getByLabelText("Style")).toHaveValue("With example");
+    expect(screen.getByPlaceholderText("How to answer (optional)")).toHaveValue(STYLE_PRESETS["With example"]);
+    expect(STYLE_PRESETS["With example"]).toMatch(/example/i);
+    expect(STYLE_PRESETS["No example"]).toMatch(/do not use an example/i);
+    expect(STYLE_PRESETS["With example"]).toMatch(/resume/i);
+    expect(STYLE_PRESETS["With example"]).not.toMatch(/using only my resume/i);
   });
 
   it("upgrades a saved plain style that was limited to the resume", () => {
     const legacy =
       "Answer as me, in the first person, using only my resume and profile. Use short everyday words a non-technical person can follow. Give a concise explanation, one simple example, and one analogy a beginner would understand. If you must use a technical term, explain it in plain language right away.";
     expect(withDefaultStyle({ instructions: legacy, resume: "Python" })).toEqual({
-      instructions: STYLE_PRESETS.Plain,
+      instructions: STYLE_PRESETS["With example"],
       resume: "Python",
     });
     expect(withDefaultStyle({ instructions: "Keep it formal." }).instructions).toBe("Keep it formal.");
+  });
+
+  it("adds, renames, and removes a custom template", () => {
+    const setProfile = vi.fn();
+    const setTemplates = vi.fn();
+    const { rerender } = render(
+      <CandidateProfile profile={{ instructions: "Be direct." }} setProfile={setProfile} templates={[]} setTemplates={setTemplates} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Add template" }));
+    const created = setTemplates.mock.calls[0][0];
+    expect(created).toHaveLength(1);
+    expect(created[0].title).toBe("My style");
+    expect(created[0].body).toBe("Be direct.");
+    rerender(
+      <CandidateProfile
+        profile={{ instructions: "Be direct." }}
+        setProfile={setProfile}
+        templates={created}
+        setTemplates={setTemplates}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("Template title My style"), { target: { value: "Board update" } });
+    const renamed = setTemplates.mock.calls[setTemplates.mock.calls.length - 1][0];
+    expect(renamed[0].title).toBe("Board update");
+    vi.stubGlobal("confirm", () => true);
+    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+    const removed = setTemplates.mock.calls[setTemplates.mock.calls.length - 1][0];
+    expect(removed).toEqual([]);
   });
 
   afterEach(() => {

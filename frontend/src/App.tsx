@@ -1,20 +1,29 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { apiFetch, fetchAuthMe, loginWithPassword, logout, saveProfile, type AuthState } from "./services/api";
+import {
+  accountSettingsFor,
+  audioKey,
+  defaultProfile,
+  forgetSharedSettings,
+  profileKey,
+  profilePayload,
+} from "./services/accountSettings";
 import { initialSessionState, reduceSessionState } from "./sessionState";
+import { CoachPopupPage, openMeetingPopup, publishCoachPopup } from "./components/CoachPopup";
 import { Coach, Ev, startAudioCapture, startBrowserSTT, type AudioSource } from "./services/websocket";
+import type { StyleTemplate } from "./lib/stylePresets";
 import {
   AnswerPanel,
   CandidateProfile,
   Controls,
-  DEFAULT_STYLE,
   Header,
-  withDefaultStyle,
   LiveTranscript,
   LoginPage,
-  STYLE_PRESETS,
   StatusIndicator,
   TabNav,
 } from "./components/components";
+
+const popupView = new URLSearchParams(window.location.search).get("popup") === "1";
 
 const store = {
   get: (k: string) => {
@@ -31,17 +40,21 @@ const store = {
       /* storage unavailable */
     }
   },
+  remove: (k: string) => {
+    try {
+      localStorage.removeItem(k);
+    } catch {
+      /* storage unavailable */
+    }
+  },
 };
 
-function loadProfile(): Record<string, string> {
-  try {
-    return withDefaultStyle(JSON.parse(store.get("coach.profile") || "{}"));
-  } catch {
-    return { instructions: STYLE_PRESETS[DEFAULT_STYLE] };
-  }
+export default function App() {
+  if (popupView) return <CoachPopupPage />;
+  return <CoachApp />;
 }
 
-export default function App() {
+function CoachApp() {
   const [s, dispatch] = useReducer(reduceSessionState, initialSessionState);
   const [running, setRunning] = useState(false);
   const [muted, setMuted] = useState(false);
@@ -50,9 +63,12 @@ export default function App() {
   const [tab, setTab] = useState<"session" | "setup">("session");
   const [llm, setLlm] = useState("groq");
   const [stt, setStt] = useState("groq");
-  const [audioSource, setAudioSource] = useState<AudioSource>((store.get("coach.audio") as AudioSource) || "mic");
+  const [audioSource, setAudioSource] = useState<AudioSource>("mic");
   const [meetingId, setMeetingId] = useState<string | null>(null);
-  const [profile, setProfile] = useState<Record<string, string>>(loadProfile);
+  const [profile, setProfile] = useState<Record<string, string>>(defaultProfile);
+  const [templates, setTemplates] = useState<StyleTemplate[]>([]);
+  const [profileOwner, setProfileOwner] = useState<string | null>(null);
+  const [popupError, setPopupError] = useState("");
   const [auth, setAuth] = useState<AuthState>({
     enabled: false,
     required: true,
@@ -63,40 +79,68 @@ export default function App() {
   const [authChecked, setAuthChecked] = useState(false);
   const [loginError, setLoginError] = useState("");
   const profileSyncRef = useRef<ReturnType<typeof setTimeout>>();
+  const activeUserId = useRef<string | null>(null);
+  const skipProfileSave = useRef(false);
 
   const live = useRef({ profile, mode, muted, llm, stt, meetingId });
   live.current = { profile, mode, muted, llm, stt, meetingId };
   const coach = useRef<Coach>();
   const stopMic = useRef<() => void>();
+  activeUserId.current = auth.user?.id ?? null;
 
   useEffect(() => {
-    store.set("coach.profile", JSON.stringify(profile));
-    if (!auth.user) return;
+    const uid = auth.user?.id;
+    if (!uid || uid !== profileOwner) return;
+    const snapshot = profilePayload(profile, audioSource, mode, dev, templates);
+    store.set(profileKey(uid), JSON.stringify(snapshot));
+    store.set(audioKey(uid), audioSource);
     clearTimeout(profileSyncRef.current);
+    if (skipProfileSave.current) {
+      skipProfileSave.current = false;
+      return;
+    }
     profileSyncRef.current = setTimeout(() => {
-      saveProfile(profile).catch(() => {});
+      if (activeUserId.current !== uid) return;
+      saveProfile(snapshot).catch(() => {});
     }, 800);
     return () => clearTimeout(profileSyncRef.current);
-  }, [profile, auth.user]);
-  useEffect(() => {
-    store.set("coach.audio", audioSource);
-  }, [audioSource]);
+  }, [profile, templates, audioSource, mode, dev, auth.user, profileOwner]);
+
+  const applyAccount = useCallback((a: AuthState) => {
+    setAuth(a);
+    if (!a.user) {
+      setProfileOwner(null);
+      setProfile(defaultProfile());
+      setTemplates([]);
+      setAudioSource("mic");
+      setMode("balanced");
+      setDev(false);
+      setTab("session");
+      return;
+    }
+    const serverHasProfile = !!a.profile && Object.keys(a.profile).length > 0;
+    skipProfileSave.current = serverHasProfile;
+    const settings = accountSettingsFor(a.user.id, a.profile, store.get);
+    setProfile(settings.profile);
+    setTemplates(settings.templates);
+    setAudioSource(settings.audio);
+    setMode(settings.mode);
+    setDev(settings.dev);
+    setTab("session");
+    setProfileOwner(a.user.id);
+    forgetSharedSettings(store.remove);
+  }, []);
 
   const loadAuth = useCallback(async () => {
     try {
-      const a = await fetchAuthMe();
-      setAuth(a);
-      if (a.user && a.profile && Object.keys(a.profile).length) {
-        setProfile((prev) => {
-          return withDefaultStyle({ ...prev, ...a.profile });
-        });
-      }
+      applyAccount(await fetchAuthMe());
     } catch {
       setAuth((a) => ({ ...a, user: null }));
+      setProfileOwner(null);
     } finally {
       setAuthChecked(true);
     }
-  }, []);
+  }, [applyAccount]);
 
   useEffect(() => {
     apiFetch("/api/health")
@@ -124,6 +168,15 @@ export default function App() {
       window.history.replaceState({}, "", window.location.pathname);
     }
   }, [loadAuth]);
+
+  useEffect(() => {
+    publishCoachPopup({
+      answer: s.answer,
+      status: running && muted ? "READY" : s.status,
+      partial: s.partial,
+      hint: running && muted ? "Muted" : undefined,
+    });
+  }, [s.answer, s.partial, s.status, running, muted]);
 
   useEffect(() => {
     if (!running) return;
@@ -226,9 +279,48 @@ export default function App() {
   const startDisabled = auth.required && !auth.user;
 
   const handleLogout = async () => {
+    const uid = auth.user?.id;
+    stopMic.current?.();
+    coach.current?.stop();
+    const mid = meetingId;
+    if (mid) {
+      apiFetch("/api/session/stop", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ meeting_id: mid }),
+      }).catch(() => {});
+    }
+    setRunning(false);
+    setMeetingId(null);
+    setMuted(false);
+    dispatch({ type: "clear" });
+    dispatch({ type: "status", status: "READY" });
+    clearTimeout(profileSyncRef.current);
+    if (uid && uid === profileOwner) {
+      const snapshot = profilePayload(profile, audioSource, mode, dev, templates);
+      store.set(profileKey(uid), JSON.stringify(snapshot));
+      store.set(audioKey(uid), audioSource);
+      try {
+        await saveProfile(snapshot);
+      } catch {
+        /* this account's cache still has the latest setup */
+      }
+    }
+    setProfileOwner(null);
+    setProfile(defaultProfile());
+    setTemplates([]);
+    setAudioSource("mic");
+    setMode("balanced");
+    setDev(false);
+    setTab("session");
     await logout();
-    setAuth((a) => ({ ...a, user: null }));
+    setAuth((a) => ({ ...a, user: null, profile: {} }));
     setLoginError("");
+  };
+
+  const handleMeetingPopup = async () => {
+    const message = await openMeetingPopup();
+    setPopupError(message || "");
   };
 
   const handlePasswordLogin = async (email: string, password: string) => {
@@ -263,8 +355,10 @@ export default function App() {
           user: auth.user,
           onLogout: handleLogout,
         }}
+        onMeetingPopup={handleMeetingPopup}
       />
       <TabNav tab={tab} setTab={setTab} />
+      {popupError && <div className="alert-error" role="alert">{popupError}</div>}
 
       {tab === "session" && (
         <div className="session-layout">
@@ -292,7 +386,7 @@ export default function App() {
               Show timing metrics
             </label>
           </div>
-          <CandidateProfile profile={profile} setProfile={setProfile} />
+          <CandidateProfile profile={profile} setProfile={setProfile} templates={templates} setTemplates={setTemplates} />
         </>
       )}
 

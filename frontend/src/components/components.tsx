@@ -1,7 +1,15 @@
 import { useRef, useState, type FormEvent } from "react";
 import { validateResumeFile } from "../lib/resumeFile";
+import {
+  DEFAULT_STYLE,
+  STYLE_PRESETS,
+  newTemplateId,
+  type StyleTemplate,
+} from "../lib/stylePresets";
 import { BrandLogo } from "./BrandLogo";
 import { ThemeToggle } from "./ThemeToggle";
+
+export { DEFAULT_STYLE, STYLE_PRESETS, withDefaultStyle } from "../lib/stylePresets";
 
 const STATUS_CLASS: Record<string, string> = {
   READY: "idle",
@@ -49,7 +57,7 @@ export type AuthBarProps = {
   onLogout: () => void;
 };
 
-export function Header({ auth }: { auth?: AuthBarProps }) {
+export function Header({ auth, onMeetingPopup }: { auth?: AuthBarProps; onMeetingPopup?: () => void }) {
   return (
     <header className="app-header">
       <div className="header-row">
@@ -57,6 +65,20 @@ export function Header({ auth }: { auth?: AuthBarProps }) {
           <BrandLogo />
         </h1>
         <div className="auth-bar">
+          {onMeetingPopup && (
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label="Open meeting window"
+              title="Open a small window you can keep in front of the meeting"
+              onClick={onMeetingPopup}
+            >
+              <svg className="popup-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="3" y="4" width="18" height="14" rx="2" fill="none" stroke="currentColor" strokeWidth="1.8" />
+                <rect x="11" y="10" width="8" height="6" rx="1.2" fill="currentColor" opacity="0.85" />
+              </svg>
+            </button>
+          )}
           <ThemeToggle />
           {auth?.user && (
             <>
@@ -83,6 +105,7 @@ export function LoginPage({
 }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [localError, setLocalError] = useState("");
   const remoteError =
@@ -130,17 +153,28 @@ export function LoginPage({
             onChange={(e) => setEmail(e.target.value)}
           />
         </label>
-        <label className="field">
-          Password
-          <input
-            type="password"
-            name="password"
-            autoComplete="current-password"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </label>
+        <div className="field">
+          <label htmlFor="login-password">Password</label>
+          <div className="password-wrap">
+            <input
+              id="login-password"
+              type={showPassword ? "text" : "password"}
+              name="password"
+              autoComplete="current-password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+            <button
+              type="button"
+              className="password-toggle"
+              aria-label={showPassword ? "Hide password" : "Show password"}
+              onClick={() => setShowPassword((shown) => !shown)}
+            >
+              {showPassword ? "Hide" : "Show"}
+            </button>
+          </div>
+        </div>
         <button type="submit" className="btn btn-primary btn-block login-submit" disabled={busy}>
           {busy ? "Signing in…" : "Sign in"}
         </button>
@@ -214,31 +248,26 @@ export function TabNav({
   );
 }
 
-const LEGACY_PLAIN =
-  "Answer as me, in the first person, using only my resume and profile. Use short everyday words a non-technical person can follow. Give a concise explanation, one simple example, and one analogy a beginner would understand. If you must use a technical term, explain it in plain language right away.";
-
-export const STYLE_PRESETS: Record<string, string> = {
-  Plain:
-    "Answer as me, in the first person. Answer the question correctly even when it is not on my resume. Treat my resume as background: use a real detail when it fits, relate the answer to something I actually did when that is natural, and otherwise do not relate it or mention the resume. Never apologize, say you lack resume details, or frame the answer as a weakness. Use short everyday words a non-technical person can follow. Give a concise explanation, one simple example, and one analogy a beginner would understand. If you must use a technical term, explain it in plain language right away.",
-  Concise: "Keep answers short and conversational, as if spoken aloud.",
-  Senior: "Answer as a senior engineer with trade-offs, under 120 words.",
-  STAR: "Use natural STAR stories from my resume only.",
-  Simple: "Explain simply, under 90 words.",
-};
-
-export const DEFAULT_STYLE = "Plain";
-
-export function withDefaultStyle(profile: Record<string, string>): Record<string, string> {
-  const instructions = (profile.instructions ?? "").trim();
-  if (!instructions || instructions === LEGACY_PLAIN) {
-    return { ...profile, instructions: STYLE_PRESETS[DEFAULT_STYLE] };
-  }
-  return profile;
+function styleSelection(instructions: string, templates: StyleTemplate[]): string {
+  const template = templates.find((item) => item.body === instructions);
+  if (template) return `template:${template.id}`;
+  const preset = Object.keys(STYLE_PRESETS).find((name) => STYLE_PRESETS[name] === instructions);
+  return preset ?? "";
 }
 
-export function CandidateProfile({ profile, setProfile }: { profile: Record<string, string>; setProfile: (p: Record<string, string>) => void }) {
+export function CandidateProfile({
+  profile,
+  setProfile,
+  templates = [],
+  setTemplates = () => {},
+}: {
+  profile: Record<string, string>;
+  setProfile: (p: Record<string, string>) => void;
+  templates?: StyleTemplate[];
+  setTemplates?: (templates: StyleTemplate[]) => void;
+}) {
   const set = (k: string, v: string) => setProfile({ ...profile, [k]: v });
-  const styleName = Object.keys(STYLE_PRESETS).find((k) => STYLE_PRESETS[k] === (profile.instructions ?? "")) ?? "";
+  const styleName = styleSelection(profile.instructions ?? "", templates);
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadName, setUploadName] = useState("");
@@ -270,23 +299,90 @@ export function CandidateProfile({ profile, setProfile }: { profile: Record<stri
     }
   }
 
+  function applyStyle(value: string) {
+    if (value.startsWith("template:")) {
+      const template = templates.find((item) => item.id === value.slice("template:".length));
+      if (template) set("instructions", template.body);
+      return;
+    }
+    if (STYLE_PRESETS[value]) set("instructions", STYLE_PRESETS[value]);
+  }
+
+  function updateTemplate(id: string, patch: Partial<StyleTemplate>) {
+    const current = templates.find((item) => item.id === id);
+    const next = templates.map((item) => (item.id === id ? { ...item, ...patch } : item));
+    setTemplates(next);
+    if (current && patch.body !== undefined && (profile.instructions ?? "") === current.body) {
+      set("instructions", patch.body);
+    }
+  }
+
+  function addTemplate() {
+    if (templates.length >= 12) return;
+    const title = templates.some((item) => item.title === "My style") ? `My style ${templates.length + 1}` : "My style";
+    const body = (profile.instructions ?? "").trim() || STYLE_PRESETS[DEFAULT_STYLE];
+    const created = { id: newTemplateId(), title, body };
+    setTemplates([...templates, created]);
+    set("instructions", body);
+  }
+
+  function removeTemplate(id: string) {
+    const template = templates.find((item) => item.id === id);
+    if (!template || !confirm(`Remove “${template.title}”?`)) return;
+    setTemplates(templates.filter((item) => item.id !== id));
+  }
+
   return (
     <div className="card">
       <h2 className="card-label">Your profile</h2>
       <label className="field">
         Style
-        <select
-          aria-label="Style"
-          value={styleName}
-          onChange={(e) => set("instructions", e.target.value ? STYLE_PRESETS[e.target.value] : "")}
-        >
+        <select aria-label="Style" value={styleName} onChange={(e) => applyStyle(e.target.value)}>
           <option value="">Custom</option>
-          {Object.keys(STYLE_PRESETS).map((k) => (
-            <option key={k} value={k}>{k}</option>
+          {Object.keys(STYLE_PRESETS).map((name) => (
+            <option key={name} value={name}>{name}</option>
           ))}
+          {templates.length > 0 && (
+            <optgroup label="My templates">
+              {templates.map((template) => (
+                <option key={template.id} value={`template:${template.id}`}>{template.title}</option>
+              ))}
+            </optgroup>
+          )}
         </select>
-        <textarea rows={2} placeholder="How to answer (optional)" value={profile.instructions ?? ""} onChange={(e) => set("instructions", e.target.value)} />
+        <textarea rows={4} placeholder="How to answer (optional)" value={profile.instructions ?? ""} onChange={(e) => set("instructions", e.target.value)} />
       </label>
+      <div className="template-editor" aria-label="Custom templates">
+        <div className="template-head">
+          <h3>My templates</h3>
+          <button type="button" className="btn btn-sm" onClick={addTemplate} disabled={templates.length >= 12}>
+            Add template
+          </button>
+        </div>
+        <p className="template-lead">Save your own answer styles. Rename a template, edit its wording, or remove it.</p>
+        {templates.map((template) => (
+          <div key={template.id} className="template-card">
+            <input
+              type="text"
+              aria-label={`Template title ${template.title}`}
+              value={template.title}
+              maxLength={60}
+              onChange={(e) => updateTemplate(template.id, { title: e.target.value })}
+            />
+            <textarea
+              rows={3}
+              aria-label={`Template text ${template.title}`}
+              value={template.body}
+              maxLength={2000}
+              onChange={(e) => updateTemplate(template.id, { body: e.target.value })}
+            />
+            <div className="template-actions">
+              <button type="button" className="btn btn-sm" onClick={() => set("instructions", template.body)}>Use</button>
+              <button type="button" className="btn btn-sm btn-ghost" onClick={() => removeTemplate(template.id)}>Remove</button>
+            </div>
+          </div>
+        ))}
+      </div>
       <label className="field">
         Role
         <input type="text" placeholder="Job title" value={profile.target ?? ""} onChange={(e) => set("target", e.target.value)} />
