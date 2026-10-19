@@ -77,6 +77,8 @@ class UtteranceBuffer:
 
     async def _fire(self, delay: float):
         await asyncio.sleep(delay)
+        if self.timer is not asyncio.current_task():
+            return
         self.hold = False
         text, self.buf = self.buf, ""
         sid = self.segment_id

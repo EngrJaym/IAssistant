@@ -204,6 +204,25 @@ export const LiveTranscript = ({ partial, finals }: { partial: string; finals: s
   </details>
 );
 
+export const TurnQueue = ({
+  turns,
+  partial,
+}: {
+  turns: { qid: number; question: string; answer: string; done: boolean }[];
+  partial: string;
+}) => (
+  <div className="turn-queue" aria-live="polite">
+    {turns.map((turn) => (
+      <article key={turn.qid} className={turn.done ? "turn is-done" : "turn"}>
+        <p className="turn-question">{turn.question}</p>
+        <p className="turn-answer">{turn.answer || (turn.done ? "" : "Answering…")}</p>
+      </article>
+    ))}
+    {!turns.length && <p className="turn-answer">Your answer will appear here.</p>}
+    {partial && <p className="turn-hearing">{partial}</p>}
+  </div>
+);
+
 export const AnswerPanel = ({
   answer,
   metrics,
@@ -507,11 +526,10 @@ function BarIcon({ children }: { children: ReactNode }) {
 
 export const Controls = (p: {
   running: boolean;
-  muted: boolean;
   startDisabled?: boolean;
   onStart: () => void;
   onStop: () => void;
-  onMute: () => void;
+  onStage: () => void;
   onClear: () => void;
 }) => (
   <nav className="control-bar" aria-label="Session">
@@ -523,19 +541,12 @@ export const Controls = (p: {
       <BarIcon><rect x="7" y="7" width="10" height="10" rx="1.5" /></BarIcon>
       <span>Stop</span>
     </button>
-    <button type="button" className="bar-btn" disabled={!p.running} onClick={p.onMute}>
-      {p.muted ? (
-        <BarIcon>
-          <path d="M4 10h3l4-3v10l-4-3H4v-4z" />
-          <path d="M16 9.5l4 5M20 9.5l-4 5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-        </BarIcon>
-      ) : (
-        <BarIcon>
-          <path d="M4 10h3l4-3v10l-4-3H4v-4z" />
-          <path d="M16 9.2a4 4 0 0 1 0 5.6M18.2 7a7 7 0 0 1 0 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-        </BarIcon>
-      )}
-      <span>{p.muted ? "Unmute" : "Mute"}</span>
+    <button type="button" className="bar-btn bar-btn-stage" disabled={!p.running} onClick={p.onStage}>
+      <BarIcon>
+        <path d="M6 3.5v17" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        <path d="M6 4.5h11l-2.2 3.2L17 11H6V4.5z" />
+      </BarIcon>
+      <span>Stage</span>
     </button>
     <button type="button" className="bar-btn" onClick={p.onClear}>
       <BarIcon>

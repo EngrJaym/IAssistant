@@ -123,14 +123,15 @@ describe("Controls", () => {
     render(
       <Controls
         running={false}
-        muted={false}
         onStart={() => {}}
         onStop={() => {}}
-        onMute={() => {}}
+        onStage={() => {}}
         onClear={() => {}}
       />,
     );
     expect(screen.getByRole("button", { name: "Start" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Stage" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Mute" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Stop" })).toBeDisabled();
     expect(screen.queryByText("Compact view")).not.toBeInTheDocument();
   });

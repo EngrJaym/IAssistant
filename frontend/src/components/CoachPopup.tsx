@@ -2,19 +2,26 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { popupLookVars } from "../lib/popupLook";
 import { THEME_EVENT, loadTheme, type Theme } from "../services/theme";
-import { Controls, StatusIndicator } from "./components";
+import { Controls, StatusIndicator, TurnQueue } from "./components";
 import { ThemeToggle } from "./ThemeToggle";
+
+export type CoachTurn = {
+  qid: number;
+  question: string;
+  answer: string;
+  done: boolean;
+};
 
 export type CoachPopupState = {
   answer: string;
+  turns: CoachTurn[];
   status: string;
   partial: string;
   hint?: string;
   running: boolean;
-  muted: boolean;
 };
 
-export type PopupCommand = "start" | "stop" | "mute" | "clear";
+export type PopupCommand = "start" | "stop" | "stage" | "clear";
 
 type PopupMessage =
   | { type: "coach"; state: CoachPopupState }
@@ -23,7 +30,7 @@ type PopupMessage =
 
 const CHANNEL = "iassistant-coach-popup";
 
-let latest: CoachPopupState = { answer: "", status: "READY", partial: "", running: false, muted: false };
+let latest: CoachPopupState = { answer: "", turns: [], status: "READY", partial: "", running: false };
 let pipWindow: Window | null = null;
 let pipRoot: Root | null = null;
 let remoteOpenUntil = 0;
@@ -149,14 +156,12 @@ export function CoachPopupCard({ state }: { state: CoachPopupState }) {
           <ThemeToggle />
         </div>
       </div>
-      <p className="coach-popup-answer">{state.answer || "Your answer will appear here."}</p>
-      {state.partial && <p className="coach-popup-partial">{state.partial}</p>}
+      <TurnQueue turns={state.turns} partial={state.partial} />
       <Controls
         running={state.running}
-        muted={state.muted}
         onStart={() => sendPopupCommand("start")}
         onStop={() => sendPopupCommand("stop")}
-        onMute={() => sendPopupCommand("mute")}
+        onStage={() => sendPopupCommand("stage")}
         onClear={() => sendPopupCommand("clear")}
       />
     </section>

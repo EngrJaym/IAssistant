@@ -20,8 +20,20 @@ describe("reduceSessionState", () => {
       metrics: { total_ms: 120 },
     });
     expect(s.answer).toBe("Docker containers.");
+    expect(s.turns).toEqual([
+      { qid: 0, question: "What is Docker?", answer: "Docker containers.", done: true },
+    ]);
     expect(s.points).toEqual(["Isolation"]);
     expect(s.metrics).toEqual({ total_ms: 120 });
+  });
+
+  it("keeps each queued answer on its own question", () => {
+    let s = reduceSessionState(initialSessionState, { type: "question_detected", question: "What is Docker?", qid: 1 });
+    s = reduceSessionState(s, { type: "question_detected", question: "How do you scale it?", qid: 2 });
+    s = reduceSessionState(s, { type: "answer_start", question: "What is Docker?", qid: 1 });
+    s = reduceSessionState(s, { type: "answer_token", text: "Containers.", qid: 1 });
+    s = reduceSessionState(s, { type: "answer_token", text: "Later.", qid: 2 });
+    expect(s.turns.map((turn) => turn.answer)).toEqual(["Containers.", "Later."]);
   });
 
   it("keeps only the last four final transcript lines", () => {

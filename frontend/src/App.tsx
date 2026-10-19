@@ -22,7 +22,6 @@ import {
 import { Coach, Ev, startAudioCapture, startBrowserSTT, type AudioSource } from "./services/websocket";
 import type { StyleTemplate } from "./lib/stylePresets";
 import {
-  AnswerPanel,
   CandidateProfile,
   Controls,
   Header,
@@ -30,6 +29,7 @@ import {
   LoginPage,
   StatusIndicator,
   TabNav,
+  TurnQueue,
 } from "./components/components";
 
 const popupView = new URLSearchParams(window.location.search).get("popup") === "1";
@@ -66,7 +66,6 @@ export default function App() {
 function CoachApp() {
   const [s, dispatch] = useReducer(reduceSessionState, initialSessionState);
   const [running, setRunning] = useState(false);
-  const [muted, setMuted] = useState(false);
   const [mode, setMode] = useState("balanced");
   const [dev, setDev] = useState(false);
   const [tab, setTab] = useState<"session" | "setup">("session");
@@ -92,8 +91,8 @@ function CoachApp() {
   const activeUserId = useRef<string | null>(null);
   const skipProfileSave = useRef(false);
 
-  const live = useRef({ profile, mode, muted, llm, stt, meetingId });
-  live.current = { profile, mode, muted, llm, stt, meetingId };
+  const live = useRef({ profile, mode, llm, stt, meetingId });
+  live.current = { profile, mode, llm, stt, meetingId };
   const coach = useRef<Coach>();
   const stopMic = useRef<() => void>();
   activeUserId.current = auth.user?.id ?? null;
@@ -184,13 +183,12 @@ function CoachApp() {
   useEffect(() => {
     publishCoachPopup({
       answer: s.answer,
-      status: running && muted ? "READY" : s.status,
+      turns: s.turns,
+      status: s.status,
       partial: s.partial,
-      hint: running && muted ? "Muted" : undefined,
       running,
-      muted,
     });
-  }, [s.answer, s.partial, s.status, running, muted]);
+  }, [s.answer, s.turns, s.partial, s.status, running]);
 
   useEffect(() => {
     if (!running) return;
@@ -239,7 +237,7 @@ function CoachApp() {
         stt === "browser"
           ? startBrowserSTT(
               (text, final) => {
-                if (!live.current.muted) coach.current?.send({ type: "transcript", text, final });
+                coach.current?.send({ type: "transcript", text, final });
               },
               (message, fatal) => {
                 if (fatal) stop();
@@ -247,10 +245,9 @@ function CoachApp() {
               },
             )
           : await startAudioCapture(audioSource, (b) => {
-              if (!live.current.muted) coach.current?.sendAudio(b);
+              coach.current?.sendAudio(b);
             });
       setRunning(true);
-      setMuted(false);
     } catch (e: any) {
       stopMic.current?.();
       coach.current?.stop();
@@ -273,10 +270,8 @@ function CoachApp() {
     dispatch({ type: "status", status: "READY" });
   }
 
-  const toggleMute = () => {
-    const m = !muted;
-    setMuted(m);
-    coach.current?.send({ type: "mute", value: m });
+  const stage = () => {
+    coach.current?.send({ type: "stage" });
   };
 
   const clearSession = () => {
@@ -284,15 +279,15 @@ function CoachApp() {
     dispatch({ type: "clear" });
   };
 
-  const sessionActions = useRef({ start, stop, toggleMute, clearSession });
-  sessionActions.current = { start, stop, toggleMute, clearSession };
+  const sessionActions = useRef({ start, stop, stage, clearSession });
+  sessionActions.current = { start, stop, stage, clearSession };
   useEffect(
     () =>
       subscribePopupCommands((command) => {
         const actions = sessionActions.current;
         if (command === "start") void actions.start();
         else if (command === "stop") actions.stop();
-        else if (command === "mute") actions.toggleMute();
+        else if (command === "stage") actions.stage();
         else actions.clearSession();
       }),
     [],
@@ -303,7 +298,7 @@ function CoachApp() {
     coach.current?.stop();
   }, []);
 
-  const status = running && muted ? "READY" : s.status;
+  const status = s.status;
   const startDisabled = auth.required && !auth.user;
 
   const handleLogout = async () => {
@@ -321,7 +316,6 @@ function CoachApp() {
     }
     setRunning(false);
     setMeetingId(null);
-    setMuted(false);
     dispatch({ type: "clear" });
     dispatch({ type: "status", status: "READY" });
     clearTimeout(profileSyncRef.current);
@@ -368,11 +362,10 @@ function CoachApp() {
           focusMeetingWindow();
           publishCoachPopup({
             answer: s.answer,
-            status: running && muted ? "READY" : s.status,
+            turns: s.turns,
+            status: s.status,
             partial: s.partial,
-            hint: running && muted ? "Muted" : undefined,
             running,
-            muted,
           });
         }}
       />
@@ -410,10 +403,17 @@ function CoachApp() {
       {tab === "session" && (
         <div className="session-layout">
           <div className="session-toolbar">
-            <StatusIndicator status={status} hint={running && muted ? "Muted" : undefined} />
+            <StatusIndicator status={status} />
           </div>
           {s.error && <div className="alert-error">{s.error}</div>}
-          <AnswerPanel answer={s.answer} metrics={s.metrics} dev={dev} />
+          <TurnQueue turns={s.turns} partial={s.partial} />
+          {dev && s.metrics && (
+            <pre className="metrics">
+              {s.metrics.cached
+                ? "cached"
+                : `${s.metrics.stt_ms ?? "-"} / ${s.metrics.detection_ms} / ${s.metrics.first_token_ms ?? "-"} / ${s.metrics.total_ms} ms`}
+            </pre>
+          )}
           <LiveTranscript partial={s.partial} finals={s.finals} />
         </div>
       )}
@@ -447,11 +447,10 @@ function CoachApp() {
 
       <Controls
         running={running}
-        muted={muted}
         startDisabled={auth.required && !auth.user}
         onStart={start}
         onStop={stop}
-        onMute={toggleMute}
+        onStage={stage}
         onClear={clearSession}
       />
     </div>

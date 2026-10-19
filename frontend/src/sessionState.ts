@@ -1,5 +1,12 @@
 import type { Ev } from "./services/websocket";
 
+export type AnswerTurn = {
+  qid: number;
+  question: string;
+  answer: string;
+  done: boolean;
+};
+
 export const initialSessionState = {
   status: "READY",
   partial: "",
@@ -7,6 +14,7 @@ export const initialSessionState = {
   question: "",
   qtype: "",
   answer: "",
+  turns: [] as AnswerTurn[],
   points: [] as string[],
   followUp: "",
   confidence: "",
@@ -16,6 +24,22 @@ export const initialSessionState = {
   detected: false,
   phaseReason: "",
 };
+
+function putTurn(
+  turns: AnswerTurn[],
+  qid: number | undefined,
+  question: string,
+  patch: Partial<AnswerTurn>,
+): AnswerTurn[] {
+  const id = typeof qid === "number" ? qid : turns.length ? turns[turns.length - 1].qid : 0;
+  const idx = turns.findIndex((turn) => turn.qid === id);
+  if (idx < 0) {
+    return [...turns, { qid: id, question, answer: "", done: false, ...patch }];
+  }
+  const next = turns.slice();
+  next[idx] = { ...next[idx], ...patch, question: question || next[idx].question };
+  return next;
+}
 
 export type SessionState = typeof initialSessionState;
 
@@ -32,12 +56,35 @@ export function reduceSessionState(s: SessionState, e: Ev): SessionState {
     case "possible_question":
       return { ...s, possible: e.question };
     case "question_detected":
-      return { ...s, question: e.question, qtype: e.qtype, detected: true, possible: "", error: "" };
+      return {
+        ...s,
+        question: e.question,
+        qtype: e.qtype,
+        detected: true,
+        possible: "",
+        error: "",
+        turns: putTurn(s.turns, e.qid, e.question, {}),
+      };
     case "answer_start":
-      return { ...s, question: e.question, answer: "", points: [], followUp: "", confidence: "", metrics: null };
-    case "answer_token":
-      return { ...s, answer: s.answer + e.text };
-    case "answer_complete":
+      return {
+        ...s,
+        question: e.question,
+        answer: "",
+        points: [],
+        followUp: "",
+        confidence: "",
+        metrics: null,
+        turns: putTurn(s.turns, e.qid, e.question, { answer: "", done: false }),
+      };
+    case "answer_token": {
+      const turns = putTurn(s.turns, e.qid, "", {});
+      const id = typeof e.qid === "number" ? e.qid : turns.length ? turns[turns.length - 1].qid : 0;
+      const next = turns.map((turn) => (turn.qid === id ? { ...turn, answer: turn.answer + e.text } : turn));
+      const current = next.find((turn) => turn.qid === id);
+      return { ...s, turns: next, answer: current?.answer ?? s.answer };
+    }
+    case "answer_complete": {
+      const turns = putTurn(s.turns, e.qid, e.question || s.question, { answer: e.answer, done: true });
       return {
         ...s,
         answer: e.answer,
@@ -45,7 +92,9 @@ export function reduceSessionState(s: SessionState, e: Ev): SessionState {
         followUp: e.follow_up,
         confidence: e.confidence,
         metrics: e.metrics,
+        turns,
       };
+    }
     case "error":
       return { ...s, error: e.message, status: "ERROR" };
     case "clear":

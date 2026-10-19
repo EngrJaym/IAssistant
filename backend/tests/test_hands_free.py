@@ -43,8 +43,11 @@ def test_candidate_speech_does_not_answer(monkeypatch):
         await s.process("I would package the service with Docker and deploy it on Kubernetes.", "AMBIGUOUS", 0.4)
         await s.process("How old are you?", "QUESTION", 0.95)
         await s.process("What is Docker?", "QUESTION", 0.95)
-        if s.gen:
-            await s.gen
+        for _ in range(30):
+            if any(e["type"] == "answer_complete" for e in ws.ev):
+                break
+            await asyncio.sleep(0.05)
+        await s.close()
         return ws.ev
 
     ev = asyncio.run(go())

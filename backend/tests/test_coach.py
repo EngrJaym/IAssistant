@@ -134,19 +134,38 @@ def test_pipeline_duplicate_reuses_answer(monkeypatch):
     assert len(calls) == 1 and [e for e in ev if e["type"] == "answer_complete"][-1]["metrics"] == {"cached": True}
 
 
-def test_new_question_cancels_old_generation(monkeypatch):
+def test_new_question_stays_queued_while_the_first_answer_finishes(monkeypatch):
     async def go():
         ws = FakeWS(); s = main.Session(ws, main._resolve_for_session, main._resolved); finished = []
         async def slow(ctx, q, qt):
             yield "token", "x"
-            await asyncio.sleep(1 if "Redis" in q else 0)
+            await asyncio.sleep(0.4 if "Redis" in q else 0)
             finished.append(q)
-            yield "done", {"answer": "x", "key_points": [], "follow_up": "", "confidence": "high"}
+            yield "done", {"answer": q, "key_points": [], "follow_up": "", "confidence": "high"}
         monkeypatch.setattr(session_ws, "stream_answer", slow)
-        s.on_final("What is Redis?"); await asyncio.sleep(0.4)
-        s.on_final("Explain Kafka partitions to me please?"); await asyncio.sleep(0.5); await s.close()
+        s.on_final("What is Redis?"); await asyncio.sleep(0.35)
+        s.on_final("Explain Kafka partitions to me please?"); await asyncio.sleep(1.2); await s.close()
         return finished
-    assert asyncio.run(go()) == ["Explain Kafka partitions to me please?"]
+    assert asyncio.run(go()) == ["What is Redis?", "Explain Kafka partitions to me please?"]
+
+
+def test_stage_answers_the_heard_part_and_keeps_the_rest(monkeypatch):
+    async def go():
+        ws = FakeWS(); s = main.Session(ws, main._resolve_for_session, main._resolved)
+        s.stt_mode = "browser"
+        monkeypatch.setattr(session_ws, "stream_answer", fake_stream)
+        await s.control({"type": "transcript", "text": "How would you design a cache", "final": False})
+        await s.control({"type": "stage"})
+        await s.control({"type": "transcript", "text": "How would you design a cache for user sessions?", "final": True})
+        await asyncio.sleep(0.8)
+        await s.control({"type": "stage"})
+        await asyncio.sleep(0.6)
+        await s.close()
+        return [e["question"] for e in ws.ev if e["type"] == "question_detected"]
+    questions = asyncio.run(go())
+    assert questions[0] == "How would you design a cache"
+    assert any("user sessions" in q for q in questions[1:])
+    assert len(questions) == 2
 
 
 def test_health_and_ws_without_key(monkeypatch):
