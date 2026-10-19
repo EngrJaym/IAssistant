@@ -1,6 +1,7 @@
 export type Theme = "light" | "dark";
 
 const KEY = "coach.theme";
+export const THEME_EVENT = "iassistant-theme";
 
 export function initTheme(): Theme {
   const saved = localStorage.getItem(KEY) as Theme | null;
@@ -15,7 +16,9 @@ function systemTheme(): Theme {
 
 export function applyTheme(theme: Theme) {
   document.documentElement.setAttribute("data-theme", theme);
+  document.documentElement.style.colorScheme = theme;
   localStorage.setItem(KEY, theme);
+  window.dispatchEvent(new CustomEvent(THEME_EVENT, { detail: theme }));
 }
 
 export function loadTheme(): Theme {

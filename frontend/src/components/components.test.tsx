@@ -124,12 +124,10 @@ describe("Controls", () => {
       <Controls
         running={false}
         muted={false}
-        mode="balanced"
         onStart={() => {}}
         onStop={() => {}}
         onMute={() => {}}
         onClear={() => {}}
-        setMode={() => {}}
       />,
     );
     expect(screen.getByRole("button", { name: "Start" })).toBeInTheDocument();

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CandidateProfile, DEFAULT_STYLE, STYLE_PRESETS, withDefaultStyle } from "./components";
 
@@ -50,8 +50,9 @@ describe("CandidateProfile", () => {
     fireEvent.change(screen.getByLabelText("Template title My style"), { target: { value: "Board update" } });
     const renamed = setTemplates.mock.calls[setTemplates.mock.calls.length - 1][0];
     expect(renamed[0].title).toBe("Board update");
-    vi.stubGlobal("confirm", () => true);
     fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+    const dialog = screen.getByRole("dialog", { name: "Remove template" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Remove" }));
     const removed = setTemplates.mock.calls[setTemplates.mock.calls.length - 1][0];
     expect(removed).toEqual([]);
   });

@@ -9,7 +9,16 @@ import {
   profilePayload,
 } from "./services/accountSettings";
 import { initialSessionState, reduceSessionState } from "./sessionState";
-import { CoachPopupPage, openMeetingPopup, publishCoachPopup } from "./components/CoachPopup";
+import {
+  CoachPopupPage,
+  MeetingWindowHold,
+  closeMeetingWindow,
+  focusMeetingWindow,
+  openMeetingPopup,
+  publishCoachPopup,
+  subscribeMeetingWindow,
+  subscribePopupCommands,
+} from "./components/CoachPopup";
 import { Coach, Ev, startAudioCapture, startBrowserSTT, type AudioSource } from "./services/websocket";
 import type { StyleTemplate } from "./lib/stylePresets";
 import {
@@ -69,6 +78,7 @@ function CoachApp() {
   const [templates, setTemplates] = useState<StyleTemplate[]>([]);
   const [profileOwner, setProfileOwner] = useState<string | null>(null);
   const [popupError, setPopupError] = useState("");
+  const [meetingWindow, setMeetingWindow] = useState(false);
   const [auth, setAuth] = useState<AuthState>({
     enabled: false,
     required: true,
@@ -169,12 +179,16 @@ function CoachApp() {
     }
   }, [loadAuth]);
 
+  useEffect(() => subscribeMeetingWindow(setMeetingWindow), []);
+
   useEffect(() => {
     publishCoachPopup({
       answer: s.answer,
       status: running && muted ? "READY" : s.status,
       partial: s.partial,
       hint: running && muted ? "Muted" : undefined,
+      running,
+      muted,
     });
   }, [s.answer, s.partial, s.status, running, muted]);
 
@@ -270,6 +284,20 @@ function CoachApp() {
     dispatch({ type: "clear" });
   };
 
+  const sessionActions = useRef({ start, stop, toggleMute, clearSession });
+  sessionActions.current = { start, stop, toggleMute, clearSession };
+  useEffect(
+    () =>
+      subscribePopupCommands((command) => {
+        const actions = sessionActions.current;
+        if (command === "start") void actions.start();
+        else if (command === "stop") actions.stop();
+        else if (command === "mute") actions.toggleMute();
+        else actions.clearSession();
+      }),
+    [],
+  );
+
   useEffect(() => () => {
     stopMic.current?.();
     coach.current?.stop();
@@ -279,6 +307,7 @@ function CoachApp() {
   const startDisabled = auth.required && !auth.user;
 
   const handleLogout = async () => {
+    closeMeetingWindow();
     const uid = auth.user?.id;
     stopMic.current?.();
     coach.current?.stop();
@@ -332,6 +361,24 @@ function CoachApp() {
     return message;
   };
 
+  if (auth.user && meetingWindow) {
+    return (
+      <MeetingWindowHold
+        onShow={() => {
+          focusMeetingWindow();
+          publishCoachPopup({
+            answer: s.answer,
+            status: running && muted ? "READY" : s.status,
+            partial: s.partial,
+            hint: running && muted ? "Muted" : undefined,
+            running,
+            muted,
+          });
+        }}
+      />
+    );
+  }
+
   if (!auth.user) {
     return (
       <div className="app login-app">
@@ -381,6 +428,14 @@ function CoachApp() {
                 <option value="display">Meeting / tab audio</option>
               </select>
             </label>
+            <label className="field">
+              Sensitivity
+              <select aria-label="Sensitivity" value={mode} onChange={(e) => setMode(e.target.value)}>
+                <option value="normal">Strict</option>
+                <option value="balanced">Balanced</option>
+                <option value="aggressive">Sensitive</option>
+              </select>
+            </label>
             <label className="check-inline">
               <input type="checkbox" checked={dev} onChange={(e) => setDev(e.target.checked)} />
               Show timing metrics
@@ -393,13 +448,11 @@ function CoachApp() {
       <Controls
         running={running}
         muted={muted}
-        mode={mode}
         startDisabled={auth.required && !auth.user}
         onStart={start}
         onStop={stop}
         onMute={toggleMute}
         onClear={clearSession}
-        setMode={setMode}
       />
     </div>
   );

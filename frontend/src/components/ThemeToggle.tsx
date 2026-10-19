@@ -1,4 +1,4 @@
-import { applyTheme, loadTheme, type Theme } from "../services/theme";
+import { THEME_EVENT, applyTheme, loadTheme, type Theme } from "../services/theme";
 import { useEffect, useState } from "react";
 
 export function ThemeToggle() {
@@ -7,6 +7,22 @@ export function ThemeToggle() {
   useEffect(() => {
     applyTheme(theme);
   }, [theme]);
+
+  useEffect(() => {
+    const use = (next: string | null) => {
+      if (next === "light" || next === "dark") setTheme(next);
+    };
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === "coach.theme") use(event.newValue);
+    };
+    const onTheme = (event: Event) => use((event as CustomEvent<string>).detail);
+    window.addEventListener("storage", onStorage);
+    window.addEventListener(THEME_EVENT, onTheme);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener(THEME_EVENT, onTheme);
+    };
+  }, []);
 
   const dark = theme === "dark";
   const flip = () => {

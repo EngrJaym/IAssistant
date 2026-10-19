@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { validateResumeFile } from "../lib/resumeFile";
 import {
   DEFAULT_STYLE,
@@ -272,6 +272,7 @@ export function CandidateProfile({
   const [uploading, setUploading] = useState(false);
   const [uploadName, setUploadName] = useState("");
   const [uploadErr, setUploadErr] = useState("");
+  const [confirming, setConfirming] = useState<null | { title: string; body: string; confirm: string; onConfirm: () => void }>(null);
 
   async function upload(f?: File) {
     if (!f) return;
@@ -328,8 +329,13 @@ export function CandidateProfile({
 
   function removeTemplate(id: string) {
     const template = templates.find((item) => item.id === id);
-    if (!template || !confirm(`Remove “${template.title}”?`)) return;
-    setTemplates(templates.filter((item) => item.id !== id));
+    if (!template) return;
+    setConfirming({
+      title: "Remove template",
+      body: `Remove “${template.title}”? This cannot be undone.`,
+      confirm: "Remove",
+      onConfirm: () => setTemplates(templates.filter((item) => item.id !== id)),
+    });
   }
 
   return (
@@ -414,35 +420,129 @@ export function CandidateProfile({
           {uploadErr && <p className="resume-upload-err" role="alert">{uploadErr}</p>}
         </div>
       </label>
-      <button type="button" className="btn btn-sm btn-ghost" onClick={() => confirm("Clear setup?") && setProfile({})}>Reset</button>
+      <button
+        type="button"
+        className="btn btn-sm btn-ghost"
+        onClick={() =>
+          setConfirming({
+            title: "Reset setup",
+            body: "Clear the role, job description, resume, and answer style on this account?",
+            confirm: "Reset",
+            onConfirm: () => setProfile({}),
+          })
+        }
+      >
+        Reset
+      </button>
+      {confirming && (
+        <ConfirmModal
+          title={confirming.title}
+          body={confirming.body}
+          confirmLabel={confirming.confirm}
+          onCancel={() => setConfirming(null)}
+          onConfirm={() => {
+            confirming.onConfirm();
+            setConfirming(null);
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+export function ConfirmModal({
+  title,
+  body,
+  confirmLabel,
+  onConfirm,
+  onCancel,
+}: {
+  title: string;
+  body: string;
+  confirmLabel: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    cancelRef.current?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onCancel();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onCancel]);
+
+  return (
+    <div className="modal-backdrop" onClick={onCancel}>
+      <div
+        className="modal-card"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confirm-title"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <h2 id="confirm-title">{title}</h2>
+        <p>{body}</p>
+        <div className="modal-actions">
+          <button ref={cancelRef} type="button" className="btn" onClick={onCancel}>
+            Cancel
+          </button>
+          <button type="button" className="btn btn-danger" onClick={onConfirm}>
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BarIcon({ children }: { children: ReactNode }) {
+  return (
+    <svg className="bar-icon" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
+      {children}
+    </svg>
   );
 }
 
 export const Controls = (p: {
   running: boolean;
   muted: boolean;
-  mode: string;
   startDisabled?: boolean;
   onStart: () => void;
   onStop: () => void;
   onMute: () => void;
   onClear: () => void;
-  setMode: (m: string) => void;
 }) => (
-  <footer className="control-bar">
-    <div className="control-primary">
-      <button type="button" className="btn btn-primary btn-lg" disabled={p.running || p.startDisabled} onClick={p.onStart}>Start</button>
-      <button type="button" className="btn btn-lg" disabled={!p.running} onClick={p.onStop}>Stop</button>
-    </div>
-    <div className="control-secondary">
-      <button type="button" className="btn btn-sm" disabled={!p.running} onClick={p.onMute}>{p.muted ? "Unmute" : "Mute"}</button>
-      <button type="button" className="btn btn-sm btn-ghost" onClick={p.onClear}>Clear</button>
-      <select className="mode-select" value={p.mode} onChange={(e) => p.setMode(e.target.value)} aria-label="Sensitivity">
-        <option value="normal">Strict</option>
-        <option value="balanced">Balanced</option>
-        <option value="aggressive">Sensitive</option>
-      </select>
-    </div>
-  </footer>
+  <nav className="control-bar" aria-label="Session">
+    <button type="button" className="bar-btn bar-btn-start" disabled={p.running || p.startDisabled} onClick={p.onStart}>
+      <BarIcon><path d="M8 5.5v13l11-6.5-11-6.5z" /></BarIcon>
+      <span>Start</span>
+    </button>
+    <button type="button" className="bar-btn" disabled={!p.running} onClick={p.onStop}>
+      <BarIcon><rect x="7" y="7" width="10" height="10" rx="1.5" /></BarIcon>
+      <span>Stop</span>
+    </button>
+    <button type="button" className="bar-btn" disabled={!p.running} onClick={p.onMute}>
+      {p.muted ? (
+        <BarIcon>
+          <path d="M4 10h3l4-3v10l-4-3H4v-4z" />
+          <path d="M16 9.5l4 5M20 9.5l-4 5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        </BarIcon>
+      ) : (
+        <BarIcon>
+          <path d="M4 10h3l4-3v10l-4-3H4v-4z" />
+          <path d="M16 9.2a4 4 0 0 1 0 5.6M18.2 7a7 7 0 0 1 0 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        </BarIcon>
+      )}
+      <span>{p.muted ? "Unmute" : "Mute"}</span>
+    </button>
+    <button type="button" className="bar-btn" onClick={p.onClear}>
+      <BarIcon>
+        <path d="M8 7h8M9.5 7V5.8A1.8 1.8 0 0 1 11.3 4h1.4A1.8 1.8 0 0 1 14.5 5.8V7" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        <path d="M7 7.5h10l-.7 11.2a1.5 1.5 0 0 1-1.5 1.3H9.2a1.5 1.5 0 0 1-1.5-1.3L7 7.5z" />
+      </BarIcon>
+      <span>Clear</span>
+    </button>
+  </nav>
 );
